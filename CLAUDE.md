@@ -56,7 +56,7 @@ STACK.md  DESIGN-PROMPT-PROOFBET.md  CLAUDE.md
 - **Provably-fair is the product.** `finalSeed = keccak256(vrfWord, clientSeed, nonce)`; client
   seed is player-controlled; the Verify drawer recomputes in-browser and shows "✓ matches";
   contract verified on Etherscan.
-- **Design fidelity.** Serif = Fraunces, mono = Geist Mono, sans = Geist, wordmark = Syne.
+- **Design fidelity.** Serif = Fraunces, mono = Geist Mono, sans = Geist, wordmark = Instrument Serif italic (per the updated design bundle `design/project/styles/app.css`; supersedes the earlier "Syne" wordmark — Syne is still loaded but unused).
   ONE accent `#5FE3C0`. Numbers/hashes always mono. Text never on the liquid-glass material.
   Spring physics everywhere; honor reduced-motion.
 - **Secrets:** deployer `PRIVATE_KEY` lives in `/contracts` env only — NEVER in `/app` or any

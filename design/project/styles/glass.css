@@ -1,0 +1,154 @@
+/* ============================================================
+   HOUSEPROOF — liquid glass material
+   iOS-26 interpretation: translucent, refractive, thin specular
+   edge. Dark-tinted, restrained. Used ONLY on interactive chrome.
+   Text never sits directly on glass — it sits on .glass-solid panels.
+   All intensity scales from --glass-k (0..1), set by the Tweaks panel.
+   ============================================================ */
+
+.glass {
+  position: relative;
+  background:
+    linear-gradient(
+      155deg,
+      rgba(255,255,255,calc(0.06 * var(--glass-k))) 0%,
+      rgba(255,255,255,0) 28%,
+      rgba(255,255,255,0) 72%,
+      rgba(255,255,255,calc(0.025 * var(--glass-k))) 100%),
+    var(--glass-tint);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border: 1px solid transparent;
+  border-radius: var(--r-lg);
+  /* thin specular edge: brighter top-left, fading bottom-right */
+  box-shadow:
+    inset 0 1px 0 0 rgba(255,255,255,calc(0.22 * var(--glass-k))),
+    inset 0 0 0 1px rgba(255,255,255,calc(0.05 * var(--glass-k))),
+    inset 0 -1px 0 0 rgba(0,0,0,0.25),
+    0 24px 60px -28px rgba(0,0,0,0.7),
+    0 2px 8px -4px rgba(0,0,0,0.5);
+  isolation: isolate;
+}
+
+/* specular highlight that catches the "light" — top edge sheen */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    150deg,
+    rgba(255,255,255,calc(0.45 * var(--glass-k))) 0%,
+    rgba(255,255,255,calc(0.06 * var(--glass-k))) 22%,
+    rgba(255,255,255,0) 50%,
+    rgba(255,255,255,calc(0.03 * var(--glass-k))) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* faint refraction: a displaced caustic sheen, scaled by intensity */
+.glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(120% 80% at 12% -10%, rgba(255,255,255,calc(0.10 * var(--glass-k))), transparent 55%),
+    radial-gradient(140% 120% at 110% 120%, rgba(95,227,192,calc(0.05 * var(--glass-k))), transparent 50%);
+  filter: url(#hp-refract);
+  opacity: var(--glass-k);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+/* a solid layer that sits INSIDE glass to hold small text (the Apple rule) */
+.glass-solid {
+  position: relative;
+  z-index: 3;
+  background: var(--surf-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+/* glass pill (balance, chips, toggles) */
+.glass-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  background:
+    linear-gradient(155deg, rgba(255,255,255,calc(0.05 * var(--glass-k))), rgba(255,255,255,0) 60%),
+    var(--glass-tint);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.7)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.7)) saturate(var(--glass-sat));
+  box-shadow:
+    inset 0 1px 0 0 rgba(255,255,255,calc(0.2 * var(--glass-k))),
+    inset 0 -1px 0 0 rgba(0,0,0,0.25),
+    0 8px 22px -14px rgba(0,0,0,0.8);
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* content layer above glass pseudo-elements */
+.glass > * { position: relative; z-index: 3; }
+
+/* connected-account pill + dropdown (top bar) */
+.acct-menu { position: relative; margin-left: 8px; display: inline-flex; }
+.acct-pill { gap: 8px; padding: 6px 11px 6px 7px; cursor: pointer; transition: border-color .18s, background .18s; }
+.acct-pill:hover, .acct-pill.open { border-color: var(--line-3); }
+.acct-ava { width: 20px; height: 20px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 1px 2px rgba(0,0,0,0.4); }
+.acct-addr { font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.02em; color: var(--ink-mut); }
+.acct-caret { color: var(--ink-dim); transition: transform .2s var(--ease-out); }
+.acct-pill.open .acct-caret { transform: rotate(180deg); }
+
+.acct-dropdown { position: fixed; z-index: 80; width: 248px; padding: 14px; border-radius: var(--r-lg); display: flex; flex-direction: column; gap: 12px; animation: ad-in .16s var(--ease-out); transform-origin: top right; background: linear-gradient(155deg, rgba(40,44,52,0.55), rgba(18,20,25,0.55)); backdrop-filter: blur(26px) saturate(1.6); -webkit-backdrop-filter: blur(26px) saturate(1.6); border: 1px solid var(--line-2); box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.12), inset 0 -1px 0 0 rgba(0,0,0,0.3), 0 22px 50px -16px rgba(0,0,0,0.9); }
+@keyframes ad-in { from { transform: translateY(-6px) scale(0.98); } to { transform: none; } }
+.ad-head { display: flex; align-items: center; gap: 11px; }
+.ad-ava-lg { width: 34px; height: 34px; }
+.ad-id { min-width: 0; }
+.ad-wallet { font-family: var(--sans); font-size: 13.5px; color: var(--ink); }
+.ad-addr { font-size: 11.5px; color: var(--ink-mut); background: none; border: 0; padding: 2px 0 0; cursor: pointer; text-align: left; white-space: nowrap; transition: color .15s; }
+.ad-addr:hover { color: var(--acc); }
+.ad-rows { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.ad-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
+.ad-k { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); letter-spacing: 0.03em; }
+.ad-v { font-size: 12.5px; color: var(--ink-mut); display: inline-flex; align-items: center; gap: 6px; }
+.ad-v-col { flex-direction: column; align-items: flex-end; gap: 2px; }
+.ad-v-sub { color: var(--ink-dim); font-size: 11px; }
+.ad-disconnect { font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; color: var(--loss); background: var(--surf-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 9px; cursor: pointer; transition: background .15s, border-color .15s; }
+.ad-disconnect:hover { background: color-mix(in oklab, var(--loss) 12%, var(--surf-2)); border-color: color-mix(in oklab, var(--loss) 40%, var(--line)); }
+
+/* currency pill + picker */
+.cur-pill { padding: 5px 11px 5px 6px; }
+.cur-bal { font-size: 12.5px; color: var(--ink); letter-spacing: 0.01em; }
+.cur-ico { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; flex: none; border: 1px solid; font-size: 12px; font-weight: 600; background: color-mix(in oklab, currentColor 12%, transparent); }
+.cur-ico.sm { width: 20px; height: 20px; font-size: 11.5px; }
+.cur-dropdown { width: 268px; }
+.cur-dd-head { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
+.cur-list { display: flex; flex-direction: column; gap: 2px; }
+.cur-opt { display: flex; align-items: center; gap: 11px; padding: 8px 8px; border-radius: var(--r-sm); background: none; border: 1px solid transparent; cursor: pointer; text-align: left; transition: background .14s, border-color .14s; }
+.cur-opt:hover { background: var(--surf-2); }
+.cur-opt.sel { background: var(--surf-2); border-color: var(--line-2); }
+.cur-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cur-name { font-family: var(--mono); font-size: 12.5px; color: var(--ink); letter-spacing: 0.02em; }
+.cur-sub { font-family: var(--sans); font-size: 10.5px; color: var(--ink-dim); }
+.cur-amt { font-size: 11.5px; color: var(--ink-mut); white-space: nowrap; }
+.cur-check { color: var(--acc); font-size: 12px; margin-left: 2px; }
+.cur-note { font-family: var(--mono); font-size: 10px; color: var(--ink-dim); letter-spacing: 0.02em; text-align: center; padding-top: 2px; }
+
+/* language pill + picker */
+.lang-pill { gap: 7px; padding: 7px 10px 7px 9px; }
+.lang-globe { display: inline-flex; color: var(--ink-mut); }
+.lang-cur { font-size: 12px; color: var(--ink); letter-spacing: 0.04em; }
+.lang-dropdown { width: 190px; }
+.lang-code { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 22px; border-radius: var(--r-sm); flex: none; font-size: 11px; letter-spacing: 0.04em; color: var(--ink-mut); background: var(--surf-3); border: 1px solid var(--line); }
+.cur-opt.sel .lang-code { color: var(--acc); border-color: var(--acc-line); }

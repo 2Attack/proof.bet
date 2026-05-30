@@ -32,7 +32,7 @@ export function TxStateDisplay({ tx, verb, doneLabel }: TxStateProps) {
           {phase === "signing" && "Awaiting signature in your wallet…"}
           {phase === "pending" && `${verb ?? "Confirming on-chain"}…`}
           {phase === "confirmed" && (doneLabel ?? "Confirmed on-chain")}
-          {phase === "error" && "Transaction failed"}
+          {phase === "error" && "Transaction rejected"}
         </div>
         <div className="tx-meta">
           {phase === "signing" && <span>sign to broadcast · Sepolia</span>}

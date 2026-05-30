@@ -3,17 +3,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "../../lib/app-context";
-import { useDeposit } from "./hooks";
+import { useDeposit, fpToFloat, fmtChips, fmtChipsFp, txCta } from "./hooks";
 import { TxStateDisplay } from "../../components/TxState";
 import { Btn } from "../../components/Btn";
-
-const FP = 100n;
-
-function fmtPRF(n: bigint) {
-  const whole = n / FP;
-  const frac = (n % FP).toString().padStart(2, "0");
-  return `${whole.toLocaleString("en-US")}.${frac}`;
-}
+import { useSpringValue } from "../../lib/spring";
+import { getSound } from "../../lib/sound";
 
 const FLOW = ["Connect", "Claim", "Deposit", "Play"] as const;
 function FlowRail({ stage }: { stage: number }) {
@@ -31,6 +25,45 @@ function FlowRail({ stage }: { stage: number }) {
   );
 }
 
+function ArrowGlyph() {
+  return (
+    <svg viewBox="0 0 18 12" width="16" height="11" fill="none" stroke="currentColor"
+      strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 6h13M10 1.5 15.5 6 10 10.5" />
+    </svg>
+  );
+}
+
+interface TransferBoardProps {
+  srcLabel: string;
+  srcVal: number;
+  dstLabel: string;
+  dstVal: number;
+  flowing: boolean;
+  arrived: boolean;
+}
+function TransferBoard({ srcLabel, srcVal, dstLabel, dstVal, flowing, arrived }: TransferBoardProps) {
+  return (
+    <div className="xfer">
+      <div className="xfer-side is-source">
+        <div className="xfer-k"><span className="chip-token" />{srcLabel}</div>
+        <div className="xfer-v">{fmtChips(srcVal)}</div>
+        <div className="xfer-u">PRF</div>
+      </div>
+      <div className={`xfer-arrow${flowing ? " active" : ""}`}>
+        <span className="xa-line" />
+        <span className="xa-chip" /><span className="xa-chip" /><span className="xa-chip" />
+        <span className="xa-head"><ArrowGlyph /></span>
+      </div>
+      <div className={`xfer-side is-dest${arrived ? " active" : ""}`}>
+        <div className="xfer-k"><span className="chip-token" />{dstLabel}</div>
+        <div className="xfer-v">{fmtChips(dstVal)}</div>
+        <div className="xfer-u">PRF</div>
+      </div>
+    </div>
+  );
+}
+
 interface DepositDrawerProps {
   onClose: () => void;
 }
@@ -39,22 +72,41 @@ export function DepositDrawer({ onClose }: DepositDrawerProps) {
   const router = useRouter();
   const { walletPRF, inPlay } = useApp();
   const { tx, deposit } = useDeposit();
-  const [amt, setAmt] = useState(String(Number(walletPRF) / 100));
+  const [amt, setAmt] = useState(String(fpToFloat(walletPRF)));
   const touched = useRef(false);
 
   const busy = tx.phase === "signing" || tx.phase === "pending";
   const confirmed = tx.phase === "confirmed";
 
+  // spring-driven transfer board values (whole PRF units)
+  const wDisp = useSpringValue(fpToFloat(walletPRF), "gentle");
+  const pDisp = useSpringValue(fpToFloat(inPlay), "gentle");
+
+  // soft UI chime the instant the deposit confirms (design pkSound.ui)
+  const chimed = useRef(false);
   useEffect(() => {
-    if (!touched.current) setAmt(String(Number(walletPRF) / 100));
+    if (tx.phase === "confirmed" && !chimed.current) {
+      chimed.current = true;
+      getSound().ui();
+    }
+  }, [tx.phase]);
+
+  useEffect(() => {
+    if (!touched.current) setAmt(String(fpToFloat(walletPRF)));
   }, [walletPRF]);
 
   const a = Math.min(
     Math.max(0, Number(amt) || 0),
-    Number(walletPRF) / 100
+    fpToFloat(walletPRF)
   );
   const aBigint = BigInt(Math.round(a * 100));
   const canDeposit = !busy && !confirmed && aBigint > 0n;
+
+  const doDeposit = () => {
+    if (!canDeposit) return;
+    getSound().unlock();
+    void deposit(aBigint);
+  };
 
   return (
     <>
@@ -71,30 +123,21 @@ export function DepositDrawer({ onClose }: DepositDrawerProps) {
       <div className="drawer-body">
         <FlowRail stage={2} />
 
-        <div className="xfer">
-          <div className="xfer-side is-source">
-            <div className="xfer-k"><span className="chip-token" />Wallet</div>
-            <div className="xfer-v">{fmtPRF(walletPRF)}</div>
-            <div className="xfer-u">PRF</div>
-          </div>
-          <div className={`xfer-arrow${busy ? " active" : ""}`}>
-            <span className="xa-line" />
-            <span className="xa-chip" /><span className="xa-chip" /><span className="xa-chip" />
-            <span className="xa-head">→</span>
-          </div>
-          <div className={`xfer-side is-dest${confirmed ? " active" : ""}`}>
-            <div className="xfer-k"><span className="chip-token" />In play</div>
-            <div className="xfer-v">{fmtPRF(inPlay)}</div>
-            <div className="xfer-u">PRF</div>
-          </div>
-        </div>
+        <TransferBoard
+          srcLabel="Wallet"
+          srcVal={Math.round(wDisp)}
+          dstLabel="In play"
+          dstVal={Math.round(pDisp)}
+          flowing={busy}
+          arrived={confirmed}
+        />
 
         {!confirmed ? (
           <>
             <div className="eco-amount">
               <div className="eco-amount-head">
                 <span className="kicker">Amount</span>
-                <span className="eco-avail">Wallet · {fmtPRF(walletPRF)} PRF</span>
+                <span className="eco-avail">Wallet · {fmtChipsFp(walletPRF)} PRF</span>
               </div>
               <div className="eco-amount-field">
                 <input
@@ -110,7 +153,7 @@ export function DepositDrawer({ onClose }: DepositDrawerProps) {
                 <button
                   className="eco-all"
                   disabled={busy}
-                  onClick={() => { touched.current = false; setAmt(String(Number(walletPRF) / 100)); }}
+                  onClick={() => { touched.current = false; setAmt(String(fpToFloat(walletPRF))); }}
                 >
                   Deposit all
                 </button>
@@ -123,11 +166,11 @@ export function DepositDrawer({ onClose }: DepositDrawerProps) {
             )}
 
             <div className="eco-actions">
-              <Btn kind="accent" full disabled={!canDeposit} onClick={() => deposit(aBigint)}>
+              <Btn kind="accent" full disabled={!canDeposit} onClick={doDeposit}>
                 {busy
-                  ? tx.phase === "signing" ? "Awaiting signature…" : "Confirming…"
+                  ? txCta(tx.phase)
                   : aBigint > 0n
-                    ? `Deposit ${fmtPRF(aBigint)} PRF`
+                    ? `Deposit ${fmtChipsFp(aBigint)} PRF`
                     : "Enter an amount"}
               </Btn>
               <div className="eco-note">

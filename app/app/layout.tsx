@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "./lib/providers";
 import { AppProvider } from "./lib/app-context";
 import { Backdrop } from "./components/Backdrop";
+import { FilterDefs } from "./components/FilterDefs";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,7 @@ export default function RootLayout({
       <body>
         <Providers>
           <AppProvider>
+            <FilterDefs />
             <div className="hp-app">
               <Backdrop />
               {children}

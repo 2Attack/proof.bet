@@ -1,18 +1,13 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "../../lib/app-context";
-import { useFaucet } from "./hooks";
+import { useFaucet, fpToFloat, fmtChips, txCta } from "./hooks";
 import { TxStateDisplay } from "../../components/TxState";
 import { Btn } from "../../components/Btn";
-
-const FP = 100n;
-
-function fmtPRF(n: bigint) {
-  const whole = n / FP;
-  const frac = (n % FP).toString().padStart(2, "0");
-  return `${whole.toLocaleString("en-US")}.${frac}`;
-}
+import { useSpringValue } from "../../lib/spring";
+import { getSound } from "../../lib/sound";
 
 const FLOW = ["Connect", "Claim", "Deposit", "Play"] as const;
 function FlowRail({ stage }: { stage: number }) {
@@ -35,7 +30,7 @@ interface FaucetDrawerProps {
   asDrawer?: boolean;
 }
 
-export function FaucetDrawer({ onClose, asDrawer = true }: FaucetDrawerProps) {
+export function FaucetDrawer({ onClose }: FaucetDrawerProps) {
   const router = useRouter();
   const { walletPRF } = useApp();
   const { tx, faucet } = useFaucet();
@@ -43,13 +38,23 @@ export function FaucetDrawer({ onClose, asDrawer = true }: FaucetDrawerProps) {
   const busy = tx.phase === "signing" || tx.phase === "pending";
   const minted = walletPRF > 0n;
 
-  const ctaLabel = busy
-    ? tx.phase === "signing"
-      ? "Awaiting signature…"
-      : "Confirming…"
-    : minted
-      ? "1,000 Proofs in your wallet"
-      : "Claim 1,000 Proofs";
+  // climb the wallet readout toward the live balance (spring, whole PRF units)
+  const display = useSpringValue(fpToFloat(walletPRF), "climb");
+
+  // soft UI chime the instant the on-chain mint confirms (design pkSound.ui)
+  const chimed = useRef(false);
+  useEffect(() => {
+    if (tx.phase === "confirmed" && !chimed.current) {
+      chimed.current = true;
+      getSound().ui();
+    }
+  }, [tx.phase]);
+
+  const claim = () => {
+    if (busy || minted) return;
+    getSound().unlock();
+    void faucet();
+  };
 
   return (
     <>
@@ -73,7 +78,7 @@ export function FaucetDrawer({ onClose, asDrawer = true }: FaucetDrawerProps) {
             <span className="chip-token" />
             Wallet balance
           </div>
-          <div className="cr-v">{fmtPRF(walletPRF)}</div>
+          <div className="cr-v">{fmtChips(Math.round(display))}</div>
           <div className="cr-u">PRF</div>
           <div className="cr-stack" />
         </div>
@@ -88,19 +93,14 @@ export function FaucetDrawer({ onClose, asDrawer = true }: FaucetDrawerProps) {
 
         <div className="eco-actions">
           {!minted ? (
-            <Btn
-              kind="accent"
-              full
-              disabled={busy}
-              onClick={faucet}
-            >
-              {ctaLabel}
+            <Btn kind="accent" full disabled={busy} onClick={claim}>
+              {busy ? txCta(tx.phase) : "Claim 1,000 Proofs"}
             </Btn>
           ) : (
             <Btn
               kind="accent"
               full
-              onClick={() => { onClose(); router.push("/deposit"); }}
+              onClick={() => router.push("/deposit")}
             >
               Deposit to play →
             </Btn>

@@ -201,7 +201,7 @@ export function VerifyDrawerContent({ round, onClose, onReroll }: VerifyDrawerPr
           )}
 
           {phase === "matched" && result && (
-            <div className="match-reveal">
+            <div className="match-reveal show">
               <div className="match-check">✓</div>
               <div className="match-text">
                 <div className="mt-1">

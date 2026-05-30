@@ -1,0 +1,140 @@
+/* ============================================================
+   HOUSEPROOF — Limbo game screen
+   ============================================================ */
+
+.limbo-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 392px;
+  gap: clamp(20px, 3vw, 40px);
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(20px, 4vw, 44px) clamp(16px, 4vw, 48px) 64px;
+  align-items: start;
+}
+@media (max-width: 880px) { .limbo-wrap { grid-template-columns: 1fr; } }
+
+/* ---------- play stage (the game board) ---------- */
+.stage {
+  position: relative;
+  background: radial-gradient(120% 90% at 50% 8%, #15171b 0%, var(--surf-1) 60%);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  padding: 0;
+  min-height: 480px;
+  overflow: hidden;
+  transition: border-color .5s var(--ease-out), box-shadow .5s var(--ease-out);
+}
+.stage.live.is-win { border-color: var(--acc-line); box-shadow: 0 0 0 1px rgba(95,227,192,0.08), 0 30px 80px -40px var(--acc-glow); }
+.stage.live.is-loss { border-color: rgba(183,120,122,0.22); }
+
+.stage-eyebrow { position: absolute; top: 20px; left: 22px; z-index: 4; }
+
+/* chart fills the board */
+.stage-chart { position: absolute; inset: 0; z-index: 1; }
+.stage-chart svg { width: 100%; height: 100%; display: block; }
+.chart-labels { position: absolute; inset: 0; pointer-events: none; }
+.chart-label { position: absolute; left: 12px; transform: translateY(-50%); font-size: 10.5px; color: var(--ink-dim); opacity: 0.7; }
+.chart-target { position: absolute; right: 14px; transform: translateY(-50%); z-index: 3; pointer-events: none; }
+.chart-target > span { font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; color: var(--ink-dim); background: rgba(10,11,13,0.7); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); white-space: nowrap; }
+.chart-target.beat > span { color: var(--acc); border-color: var(--acc-line); }
+
+/* glowing tip riding the curve */
+.chart-tip { position: absolute; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 3;
+  background: var(--ink-mut); box-shadow: 0 0 0 4px rgba(154,157,164,0.12); transition: background .3s, box-shadow .3s; }
+.chart-tip.beat { background: #eafff8; box-shadow: 0 0 0 5px var(--acc-glow), 0 0 22px var(--acc); }
+.chart-tip.settled { width: 14px; height: 14px; }
+
+/* content layer (number + caption) over the chart */
+.stage-content { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; padding: 0 20px; }
+.stage-numwrap { position: relative; text-align: center; }
+.stage-numwrap::before { content: ""; position: absolute; left: 50%; top: 50%; width: 130%; height: 200%; transform: translate(-50%,-50%); background: radial-gradient(closest-side, rgba(10,11,13,0.78), rgba(10,11,13,0) 72%); z-index: -1; }
+
+.result-number {
+  font-family: var(--mono); font-weight: 400;
+  font-size: clamp(60px, 12vw, 132px);
+  line-height: 0.9; letter-spacing: -0.04em; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  transition: color .4s var(--ease-out), text-shadow .4s var(--ease-out);
+}
+.result-number .x { font-size: 0.4em; color: var(--ink-dim); margin-left: 2px; letter-spacing: 0; }
+.result-win { color: var(--acc); text-shadow: 0 0 70px var(--acc-glow); }
+.result-loss { color: var(--loss); }
+
+.result-caption { margin-top: 18px; min-height: 24px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.04em; color: var(--ink-mut); display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.result-verdict { font-family: var(--serif); font-size: 16px; }
+.verdict-win { color: var(--acc); }
+.verdict-loss { color: var(--loss); }
+.payout-flash { font-family: var(--mono); font-size: 14px; color: var(--acc); }
+.climb-live { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-mut); }
+.climb-pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--acc); animation: pulse 1.1s ease-in-out infinite; }
+
+/* idle board hint */
+.stage-idle { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.stage-idle .serif { font-family: var(--serif); font-size: clamp(28px,4vw,44px); color: var(--ink-mut); font-weight: 300; display: block; letter-spacing: -0.01em; }
+
+/* win burst ring */
+.stage-burst { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; border-radius: 50%; transform: translate(-50%,-50%); z-index: 2; border: 1.5px solid var(--acc); pointer-events: none; animation: burst 1.1s var(--ease-out) forwards; }
+@keyframes burst { 0% { opacity: 0.7; transform: translate(-50%,-50%) scale(0.4); } 100% { opacity: 0; transform: translate(-50%,-50%) scale(7); } }
+
+/* recent rounds rail */
+.recent { position: absolute; bottom: 18px; left: 0; right: 0; z-index: 4; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; padding: 0 16px; }
+.recent-pill { font-family: var(--mono); font-size: 12px; padding: 5px 11px; border-radius: var(--r-pill); border: 1px solid var(--line); background: rgba(18,19,22,0.7); backdrop-filter: blur(6px); color: var(--ink-mut); }
+.recent-pill.win { color: var(--acc); border-color: var(--acc-line); }
+.recent-pill.loss { color: var(--loss); border-color: rgba(183,120,122,0.25); }
+
+/* ---------- bet panel (liquid glass) ---------- */
+.betpanel { padding: 22px; border-radius: var(--r-lg); display: flex; flex-direction: column; gap: 18px; }
+.betpanel-section { display: flex; flex-direction: column; gap: 11px; }
+
+.target-display { text-align: center; padding: 6px 0 2px; }
+.target-display .tval { font-family: var(--mono); font-size: clamp(40px, 7vw, 58px); font-weight: 400; letter-spacing: -0.03em; color: var(--acc); line-height: 1; }
+.target-display .tval .x { font-size: 0.4em; color: var(--ink-dim); }
+.target-display .tlabel { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-top: 8px; }
+
+/* slider */
+.slider { position: relative; height: 40px; display: flex; align-items: center; }
+.slider input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 40px; background: transparent; margin: 0; position: relative; z-index: 3; cursor: pointer; }
+.slider-track { position: absolute; left: 0; right: 0; height: 6px; border-radius: 99px; background: var(--surf-3); box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); overflow: hidden; }
+.slider-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: linear-gradient(90deg, var(--acc-deep), var(--acc)); box-shadow: 0 0 16px var(--acc-glow); }
+.slider input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #eafff8; border: 1px solid rgba(255,255,255,0.6); box-shadow: 0 2px 10px rgba(0,0,0,0.6), 0 0 0 5px rgba(95,227,192,0.14); cursor: grab; }
+.slider input::-webkit-slider-thumb:active { cursor: grabbing; }
+.slider input::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #eafff8; border: 1px solid rgba(255,255,255,0.6); box-shadow: 0 2px 10px rgba(0,0,0,0.6), 0 0 0 5px rgba(95,227,192,0.14); }
+.slider-scale { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); margin-top: 2px; }
+
+/* slider variation: ticks */
+.slider-ticks { position: absolute; left: 0; right: 0; bottom: 6px; height: 8px; display: flex; justify-content: space-between; z-index: 1; pointer-events: none; }
+.slider-ticks i { width: 1px; background: var(--line-2); }
+
+/* slider variation: dial */
+.dial-wrap { display: flex; justify-content: center; padding: 4px 0; }
+
+/* stake input */
+.stake { display: flex; flex-direction: column; gap: 8px; }
+.stake-field { display: flex; align-items: center; gap: 10px; background: var(--surf-3); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 12px 14px; transition: border-color .2s; }
+.stake-field:focus-within { border-color: var(--acc-line); }
+.stake-field input { flex: 1; background: none; border: 0; outline: none; color: var(--ink); font-family: var(--mono); font-size: 19px; letter-spacing: -0.01em; width: 100%; }
+.stake-field .unit { font-family: var(--mono); font-size: 13px; color: var(--ink-dim); }
+.stake-quick { display: flex; gap: 6px; }
+.stake-quick button { flex: 1; font-family: var(--mono); font-size: 11px; padding: 7px 0; border-radius: var(--r-sm); background: var(--surf-2); border: 1px solid var(--line); color: var(--ink-mut); transition: all .15s; }
+.stake-quick button:hover { color: var(--ink); border-color: var(--line-3); }
+
+/* derived stats grid */
+.bet-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.bet-stat { background: var(--surf-2); padding: 12px 14px; }
+.bet-stat .k { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
+.bet-stat .v { font-family: var(--mono); font-size: 16px; color: var(--ink); margin-top: 4px; }
+.bet-stat .v.acc { color: var(--acc); }
+
+/* bankroll meter */
+.bankroll { background: var(--surf-1); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px 20px; }
+.bankroll-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.bankroll-bar { height: 8px; border-radius: 99px; background: var(--surf-3); overflow: hidden; position: relative; }
+.bankroll-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #2c4f48, var(--acc-deep)); border-radius: 99px; }
+.bankroll-foot { display: flex; justify-content: space-between; margin-top: 12px; }
+.bankroll-foot .mb { text-align: right; }
+.bankroll-foot .mb .k, .bankroll-foot .lb .k { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); display: block; }
+.bankroll-foot .v { font-family: var(--mono); font-size: 14px; color: var(--ink); margin-top: 3px; }
+
+.balance-strip { display: flex; gap: 10px; align-items: center; margin: 0 auto clamp(16px,2vw,22px); max-width: 1180px; padding: 0 clamp(16px,4vw,48px); }
+.game-back { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; color: var(--ink-mut); background: var(--surf-2); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 8px 14px; transition: all .18s var(--ease-out); }
+.game-back:hover { color: var(--ink); border-color: var(--line-3); }

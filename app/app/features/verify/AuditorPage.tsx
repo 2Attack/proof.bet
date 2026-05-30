@@ -23,6 +23,7 @@ function fmtPRF(n: bigint) {
 
 interface AuditorResult {
   txHash: string;
+  requestId: string;
   vrfWord: string;
   clientSeed: string;
   nonce: number;
@@ -53,6 +54,7 @@ export function AuditorPage() {
     if (known) {
       setResult({
         txHash: known.txHash,
+        requestId: known.requestId,
         vrfWord: `0x${known.vrfWord.toString(16).padStart(64, "0")}`,
         clientSeed: known.clientSeed,
         nonce: Number(known.nonce),
@@ -80,6 +82,7 @@ export function AuditorPage() {
       );
       setResult({
         txHash: h,
+        requestId: ("0x" + h.slice(2, 12)) as Hex,
         vrfWord,
         clientSeed,
         nonce,
@@ -147,6 +150,10 @@ export function AuditorPage() {
                 <Hashish value={result.txHash} chars={6} />
               </div>
               <div className="seed-row">
+                <span className="sk">VRF request ID</span>
+                <Hashish value={result.requestId} chars={5} />
+              </div>
+              <div className="seed-row">
                 <span className="sk">Raw random word</span>
                 <Hashish value={result.vrfWord} chars={6} />
               </div>
@@ -161,11 +168,11 @@ export function AuditorPage() {
                 </span>
               </div>
               <div className="seed-row">
-                <span className="sk">Final keccak256 seed</span>
+                <span className="sk">final keccak256 seed</span>
                 <Hashish value={result.finalSeed} chars={6} />
               </div>
             </div>
-            <div className="match-reveal" style={{ marginTop: 16 }}>
+            <div className="match-reveal show" style={{ marginTop: 16 }}>
               <div className="match-check">✓</div>
               <div className="match-text">
                 <div className="mt-1">

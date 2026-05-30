@@ -1,16 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, useSpring, useMotionValue, animate } from "framer-motion";
 import { TopNav } from "../../components/TopNav";
 import { Btn } from "../../components/Btn";
+import { ClimbChart } from "../../components/ClimbChart";
 import { useApp } from "../../lib/app-context";
 import { usePlaceBet } from "./hooks";
+import { useClimb } from "../../lib/spring";
+import { getSound } from "../../lib/sound";
 import { randHex } from "../../lib/mock-utils";
 import type { Hex } from "viem";
-import type { LimboRound } from "./hooks";
+import type { LimboRound, BetPhase } from "./hooks";
+
+const sound = getSound();
 
 const MULT_MIN = 1.01;
 const MULT_MAX = 1000;
@@ -37,6 +41,62 @@ function fmtPRF(n: bigint) {
   return `${whole.toLocaleString("en-US")}.${frac}`;
 }
 
+
+// ---------- shared sound on/off toggle (sits in a stage corner) ----------
+function SoundToggle() {
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    setMuted(sound.muted);
+  }, []);
+
+  const toggle = () => {
+    const m = sound.toggle();
+    setMuted(m);
+    if (!m) sound.ui();
+  };
+
+  return (
+    <button
+      className={`pk-sound${muted ? " muted" : ""}`}
+      onClick={toggle}
+      aria-label={muted ? "Unmute sound" : "Mute sound"}
+      title={muted ? "Sound off" : "Sound on"}
+    >
+      {muted ? (
+        <svg
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M11 5 6 9H3v6h3l5 4V5z" />
+          <line x1="22" y1="9" x2="16" y2="15" />
+          <line x1="16" y1="9" x2="22" y2="15" />
+        </svg>
+      ) : (
+        <svg
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M11 5 6 9H3v6h3l5 4V5z" />
+          <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+          <path d="M18.5 6a9 9 0 0 1 0 12" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function BankrollMeter({
   bankroll,
   maxBet,
@@ -44,13 +104,14 @@ function BankrollMeter({
   bankroll: bigint;
   maxBet: bigint;
 }) {
-  const pct = Math.min(100, Number(bankroll / FP) / 50000 * 100);
+  const pct = Math.min(100, (Number(bankroll / FP) / 50000) * 100);
   return (
     <div className="bankroll">
       <div className="bankroll-head">
         <span className="kicker">House bankroll · live</span>
         <span className="chip" style={{ padding: "3px 9px" }}>
-          <span className="chip-dot" />solvent
+          <span className="chip-dot" />
+          solvent
         </span>
       </div>
       <div className="bankroll-bar">
@@ -80,6 +141,7 @@ function PendingToast({
   const [step, setStep] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [show, setShow] = useState(false);
+  void block;
 
   useEffect(() => {
     const reduced = window.matchMedia?.(
@@ -109,11 +171,7 @@ function PendingToast({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const steps = [
-    "Requesting entropy",
-    "Oracle responded",
-    "Settling on-chain",
-  ];
+  const steps = ["Requesting entropy", "Oracle responded", "Settling on-chain"];
   const cur = steps[Math.min(step, steps.length - 1)];
   const pct = Math.min(100, (step / steps.length) * 100 + 6);
 
@@ -141,18 +199,70 @@ function PendingToast({
   );
 }
 
-function ResultNumber({
-  value,
-  win,
-  settled,
-  crossing,
+// ---------- the result stage (money-shot) ----------
+function ResultStage({
+  phase,
+  round,
+  onSettle,
+  recent,
+  idleTarget,
 }: {
-  value: number;
-  win: boolean;
-  settled: boolean;
-  crossing: boolean;
+  phase: BetPhase;
+  round: LimboRound | null;
+  onSettle: () => void;
+  recent: Array<{ crashX100: bigint; win: boolean }>;
+  idleTarget: number;
 }) {
-  const cls =
+  const playing = phase === "revealing";
+  const crash = round ? Number(round.crashX100) / 100 : 1.0;
+  const [climbVal, done] = useClimb(1.0, round ? crash : 1.0, playing, "climb");
+  const settledRef = useRef(false);
+  const crossedRef = useRef(false);
+
+  useEffect(() => {
+    if (playing) settledRef.current = false;
+    if (done && playing && !settledRef.current) {
+      settledRef.current = true;
+      const t = setTimeout(onSettle, 420);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done, playing]);
+
+  // ---- sound: launch + reset cross-flag while climbing ----
+  useEffect(() => {
+    if (playing) {
+      crossedRef.current = false;
+      sound.limboStart();
+    }
+  }, [playing]);
+
+  const settled = phase === "settled";
+  const showNum = playing || settled;
+  const val = settled && round ? crash : climbVal;
+  // in-round target comes from the LOCKED round, not the live slider
+  const target = round ? Number(round.targetX100) / 100 : idleTarget || 2;
+  const win = round ? round.win : false;
+  const crossing = (playing && round ? val >= target : false) || (settled && win);
+
+  // ---- sound: ramp tone with climb, ping on cross, resolve on settle ----
+  useEffect(() => {
+    if (!playing || !round) return;
+    const prog = (climbVal - 1) / (crash - 1 || 1);
+    sound.limboTo(prog);
+    if (!crossedRef.current && climbVal >= target) {
+      crossedRef.current = true;
+      sound.limboCross();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [climbVal, playing]);
+
+  useEffect(() => {
+    if (settled && round) sound.limboEnd(win, crash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled]);
+
+  const numClass =
     "result-number" +
     (settled
       ? win
@@ -161,26 +271,101 @@ function ResultNumber({
       : crossing
         ? " result-win"
         : "");
+  const settleAnim = settled ? (win ? " is-win" : " is-loss") : "";
+
   return (
-    <motion.div
-      className={cls}
-      initial={{ scale: 0.9, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: "spring", stiffness: 80, damping: 18 }}
-      aria-live="polite"
-    >
-      {fmt(value)}
-      <span className="x">×</span>
-    </motion.div>
+    <div className={`stage${showNum ? " live" : ""}${settleAnim}`}>
+      <div className="stage-eyebrow eyebrow">Limbo · provably fair</div>
+      <SoundToggle />
+
+      <ClimbChart
+        playing={playing}
+        settled={settled}
+        val={val}
+        target={target}
+        crash={crash}
+        win={win}
+      />
+
+      {settled && win && round && <div className="stage-burst" key={round.requestId} />}
+
+      <div className="stage-content">
+        {!showNum && (
+          <div className="stage-idle">
+            {phase === "pending" ? (
+              <>
+                <span className="serif">Locking in your bet…</span>
+                <span className="kicker">fetching verifiable randomness</span>
+              </>
+            ) : (
+              <>
+                <span className="serif">Ready to launch.</span>
+                <span className="kicker">set a target · beat it to win</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {showNum && (
+          <div className="stage-numwrap">
+            <div className={numClass} aria-live="polite">
+              {fmt(val)}
+              <span className="x">×</span>
+            </div>
+            <div className="result-caption">
+              {playing && (
+                <span className="climb-live">
+                  <span className="climb-pulse" />
+                  climbing…
+                </span>
+              )}
+              {settled && win && round && (
+                <>
+                  <span className="result-verdict verdict-win">
+                    Beat {fmt(target)}×.
+                  </span>
+                  <span className="payout-flash">
+                    +{fmtPRF(round.payout)} PRF
+                  </span>
+                </>
+              )}
+              {settled && !win && round && (
+                <>
+                  <span className="result-verdict verdict-loss">
+                    Fell short of {fmt(target)}×.
+                  </span>
+                  <span style={{ color: "var(--ink-dim)" }}>
+                    −{fmtPRF(round.stake)} PRF
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {recent.length > 0 && (
+        <div className="recent">
+          {recent.map((r, i) => (
+            <span key={i} className={`recent-pill ${r.win ? "win" : "loss"}`}>
+              {fmt(Number(r.crashX100) / 100)}×
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
+// ---------- the slider (bar treatment) ----------
 function TargetSlider({
   target,
   setTarget,
+  disabled,
 }: {
   target: number;
   setTarget: (t: number) => void;
+  disabled: boolean;
 }) {
   const pos = targetToPos(target);
   const pct = Math.max(0, Math.min(1, pos)) * 100;
@@ -203,6 +388,7 @@ function TargetSlider({
           min="0"
           max="1000"
           value={Math.round(pos * 1000)}
+          disabled={disabled}
           onChange={(e) => setTarget(posToTarget(Number(e.target.value) / 1000))}
           aria-label="target multiplier"
         />
@@ -224,10 +410,11 @@ export function LimboPage() {
   const { phase, round, placeBet, settle, reset } = usePlaceBet();
   const [target, setTarget] = useState(2.0);
   const [stake, setStake] = useState(25);
-  const [clientSeed, setClientSeed] = useState<Hex>(() => randHex(32) as Hex);
-  const [displayVal, setDisplayVal] = useState(1.0);
+  const [clientSeed] = useState<Hex>(() => randHex(32) as Hex);
   const [block] = useState(6294117);
-  const [recent, setRecent] = useState<Array<{ crashX100: bigint; win: boolean }>>([]);
+  const [recent, setRecent] = useState<
+    Array<{ crashX100: bigint; win: boolean }>
+  >([]);
 
   const targetX100 = BigInt(Math.round(target * 100));
   const maxBet = maxBetLimbo(targetX100);
@@ -246,50 +433,24 @@ export function LimboPage() {
   else if (overBalance) cta = "Insufficient balance";
   else if (overMax) cta = "Above max bet";
 
-  // Spring climbing number (honors prefers-reduced-motion)
-  const springVal = useMotionValue(1.0);
-  useEffect(() => {
-    if (phase === "revealing" && round) {
-      const target_crash = Number(round.crashX100) / 100;
-      const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      if (reduced) {
-        setDisplayVal(target_crash);
-        settle();
-        setRecent((r) => [{ crashX100: round.crashX100, win: round.win }, ...r].slice(0, 6));
-        return;
-      }
-      const ctrl = animate(springVal, target_crash, {
-        type: "spring",
-        stiffness: 38,
-        damping: 14,
-        mass: 1.1,
-        onUpdate: (v) => setDisplayVal(v),
-        onComplete: () => {
-          setDisplayVal(target_crash);
-          settle();
-          if (round) {
-            setRecent((r) => [{ crashX100: round.crashX100, win: round.win }, ...r].slice(0, 6));
-          }
-        },
-      });
-      return () => ctrl.stop();
+  // push the resolved round into the recent strip exactly once, at settle
+  const onSettle = () => {
+    settle();
+    if (round) {
+      setRecent((r) =>
+        [{ crashX100: round.crashX100, win: round.win }, ...r].slice(0, 6)
+      );
     }
-    if (phase === "settled" && round) {
-      setDisplayVal(Number(round.crashX100) / 100);
-    }
-    if (phase === "idle") setDisplayVal(1.0);
-  }, [phase, round]);
-
-  const crossing = phase === "revealing" && displayVal >= target;
+  };
 
   const onPlace = () => {
     if (!canBet) return;
+    sound.unlock();
     placeBet(stakeN, targetX100, clientSeed, nonce);
   };
 
   const onVerify = () => {
     if (round) {
-      // Shape into the verify format
       setVerifyRound({
         ...round,
         requestId: round.requestId,
@@ -303,7 +464,11 @@ export function LimboPage() {
     <div className="hp-screen">
       <TopNav />
       <div className="balance-strip">
-        <Link href="/games" className="game-back" style={{ textDecoration: "none" }}>
+        <Link
+          href="/games"
+          className="game-back"
+          style={{ textDecoration: "none" }}
+        >
           ‹ Games
         </Link>
         <div className="inplay-bar">
@@ -318,11 +483,17 @@ export function LimboPage() {
             <i>PRF</i>
           </span>
           {inPlay > 0n ? (
-            <button className="ip-withdraw" onClick={() => router.push("/withdraw")}>
+            <button
+              className="ip-withdraw"
+              onClick={() => router.push("/withdraw")}
+            >
               Withdraw
             </button>
           ) : (
-            <button className="ip-deposit" onClick={() => router.push("/deposit")}>
+            <button
+              className="ip-deposit"
+              onClick={() => router.push("/deposit")}
+            >
               + Deposit Proofs
             </button>
           )}
@@ -331,83 +502,18 @@ export function LimboPage() {
 
       <div className="limbo-wrap">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div
-            className={`stage${phase === "revealing" || phase === "settled" ? " live" : ""}${phase === "settled" && round?.win ? " is-win" : ""}${phase === "settled" && !round?.win ? " is-loss" : ""}`}
-          >
-            <div className="stage-eyebrow eyebrow">Limbo · provably fair</div>
-
-            <div className="stage-content">
-              {phase === "idle" && (
-                <div className="stage-idle">
-                  <span className="serif">Ready to launch.</span>
-                  <span className="kicker">set a target · beat it to win</span>
-                </div>
-              )}
-              {phase === "pending" && (
-                <div className="stage-idle">
-                  <span className="serif">Locking in your bet…</span>
-                  <span className="kicker">fetching verifiable randomness</span>
-                </div>
-              )}
-              {(phase === "revealing" || phase === "settled") && (
-                <div className="stage-numwrap">
-                  <ResultNumber
-                    value={displayVal}
-                    win={round?.win ?? false}
-                    settled={phase === "settled"}
-                    crossing={crossing}
-                  />
-                  <div className="result-caption">
-                    {phase === "revealing" && (
-                      <span className="climb-live">
-                        <span className="climb-pulse" />
-                        climbing…
-                      </span>
-                    )}
-                    {phase === "settled" && round?.win && (
-                      <>
-                        <span className="result-verdict verdict-win">
-                          Beat {fmt(Number(round.targetX100) / 100)}×.
-                        </span>
-                        <span className="payout-flash">
-                          +{fmtPRF(round.payout)} PRF
-                        </span>
-                      </>
-                    )}
-                    {phase === "settled" && !round?.win && (
-                      <>
-                        <span className="result-verdict verdict-loss">
-                          Fell short of {fmt(Number(round?.targetX100 ?? 0n) / 100)}×.
-                        </span>
-                        <span style={{ color: "var(--ink-dim)" }}>
-                          −{fmtPRF(round?.stake ?? 0n)} PRF
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-              {phase === "settled" && round?.win && (
-                <div className="stage-burst" key={round.requestId} />
-              )}
-            </div>
-
-            {recent.length > 0 && (
-              <div className="recent">
-                {recent.map((r, i) => (
-                  <span
-                    key={i}
-                    className={`recent-pill ${r.win ? "win" : "loss"}`}
-                  >
-                    {fmt(Number(r.crashX100) / 100)}×
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          <ResultStage
+            phase={phase}
+            round={round}
+            onSettle={onSettle}
+            recent={recent}
+            idleTarget={target}
+          />
 
           {phase === "settled" && (
-            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+            <div
+              style={{ display: "flex", gap: 12, justifyContent: "center" }}
+            >
               <Btn kind="primary" onClick={onVerify}>
                 Verify this round
               </Btn>
@@ -422,7 +528,7 @@ export function LimboPage() {
 
         {/* Bet panel */}
         <div className="glass betpanel">
-          <TargetSlider target={target} setTarget={setTarget} />
+          <TargetSlider target={target} setTarget={setTarget} disabled={busy} />
 
           <div
             className="stake glass-solid"
@@ -482,7 +588,9 @@ export function LimboPage() {
             </div>
             <div className="bet-stat">
               <div className="k">Payout</div>
-              <div className="v mono acc">{fmtPRF(BigInt(Math.round(payout * 100)))} PRF</div>
+              <div className="v mono acc">
+                {fmtPRF(BigInt(Math.round(payout * 100)))} PRF
+              </div>
             </div>
           </div>
 
@@ -497,9 +605,7 @@ export function LimboPage() {
         </div>
       </div>
 
-      {phase === "pending" && (
-        <PendingToast onDone={() => {}} block={block} />
-      )}
+      {phase === "pending" && <PendingToast onDone={() => {}} block={block} />}
     </div>
   );
 }

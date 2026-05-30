@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./Logo";
 import { useApp } from "../lib/app-context";
 import { reset as resetStore } from "../lib/mock-store";
-import { setAddress } from "../lib/mock-store";
+import { fmtChipsFp, fmtGas } from "../features/economy/hooks";
 
 const LANGS = [
   { id: "en", code: "EN", label: "English" },
@@ -41,7 +41,7 @@ function GlobeIcon() {
   );
 }
 
-function LangMenu() {
+export function LangMenu() {
   const [lang, setLang] = useState("en");
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, right: 0 });
@@ -65,11 +65,16 @@ function LangMenu() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+    const onScroll = () => place();
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
 
@@ -157,24 +162,27 @@ function WalletMenu() {
       if (!pillRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onScroll = () => place();
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
 
   const short = address ? address.slice(0, 6) + "…" + address.slice(-4) : "";
+  // blockie-style conic avatar derived from the address (design makeAccount)
   const h1 = address ? parseInt(address.slice(2, 6), 16) % 360 : 180;
-  const h2 = (h1 + 80) % 360;
-  const ava = `conic-gradient(from 45deg at 35% 30%, hsl(${h1} 72% 56%), hsl(${h2} 64% 46%), hsl(${h1} 72% 56%))`;
-
-  const fmtPRF = (n: bigint) => {
-    const whole = n / 100n;
-    const frac = (n % 100n).toString().padStart(2, "0");
-    return `${whole.toLocaleString("en-US")}.${frac}`;
-  };
+  const h2 = address
+    ? (h1 + 70 + (parseInt(address.slice(6, 8), 16) % 110)) % 360
+    : (h1 + 80) % 360;
+  const rot = address ? parseInt(address.slice(8, 10), 16) : 45;
+  const ava = `conic-gradient(from ${rot}deg at 35% 30%, hsl(${h1} 72% 56%), hsl(${h2} 64% 46%), hsl(${h1} 72% 56%))`;
 
   const total = walletPRF + inPlay;
 
@@ -197,7 +205,7 @@ function WalletMenu() {
         title="Wallet & Proofs"
       >
         <span className="acct-ava" style={{ background: ava }} />
-        <span className="chips-pill-v mono">{fmtPRF(total)}</span>
+        <span className="chips-pill-v mono">{fmtChipsFp(total)}</span>
         <span className="chips-pill-u mono">PRF</span>
         <svg className="acct-caret" viewBox="0 0 12 8" width="11" height="8" aria-hidden="true">
           <path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -232,17 +240,17 @@ function WalletMenu() {
             <div className="chips-rows">
               <div className="chips-row">
                 <span className="chips-row-k"><span className="chip-token" />In play</span>
-                <span className="chips-row-v mono">{fmtPRF(inPlay)}</span>
+                <span className="chips-row-v mono">{fmtChipsFp(inPlay)}</span>
               </div>
               <div className="chips-row">
                 <span className="chips-row-k"><span className="chip-token dim" />Wallet</span>
-                <span className="chips-row-v mono">{fmtPRF(walletPRF)}</span>
+                <span className="chips-row-v mono">{fmtChipsFp(walletPRF)}</span>
               </div>
             </div>
             <div className="chips-acts">
               <button className="chips-act" onClick={() => act(() => router.push("/deposit"))}>Deposit</button>
               <button
-                className={`chips-act primary${inPlay <= 0n ? "" : ""}`}
+                className="chips-act primary"
                 disabled={inPlay <= 0n}
                 onClick={() => inPlay > 0n && act(() => router.push("/withdraw"))}
               >
@@ -258,7 +266,7 @@ function WalletMenu() {
             </div>
             <div className="ad-row">
               <span className="ad-k">Gas</span>
-              <span className="ad-v mono">{tEth.toFixed(3)} tETH</span>
+              <span className="ad-v mono">{fmtGas(tEth)} tETH</span>
             </div>
           </div>
 
@@ -275,13 +283,14 @@ interface TopNavProps {
   active?: "games" | "verify" | "states";
 }
 
-export function TopNav({ active }: TopNavProps) {
+export function TopNav(_props: TopNavProps) {
   const { address, verifyRound } = useApp();
-  const router = useRouter();
   const pathname = usePathname();
 
   const isGames = pathname?.startsWith("/games") || pathname === "/games";
-  const isVerify = pathname?.startsWith("/verify");
+  // "Audit" lights only on the auditor screen; per-round /verify/[txHash] is the
+  // separate accent "Verify ↗" link (matches the design TopBar).
+  const isVerify = pathname === "/verify";
   const isStates = pathname === "/states";
 
   return (
@@ -311,6 +320,15 @@ export function TopNav({ active }: TopNavProps) {
         >
           States
         </Link>
+        {verifyRound && (
+          <Link
+            href={`/verify/${verifyRound.txHash}`}
+            className="hp-nav-link"
+            style={{ textDecoration: "none", color: "var(--acc)" }}
+          >
+            Verify ↗
+          </Link>
+        )}
         {address && (
           <>
             <WalletMenu />

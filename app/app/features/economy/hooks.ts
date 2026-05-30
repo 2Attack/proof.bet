@@ -28,6 +28,53 @@ export interface TxState {
   error: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Display-only shaping (ported from design economy.jsx fmtChips/fmtGas/txCta).
+// Money stays bigint ×100 fp everywhere real; these helpers only format the
+// transient *float* a spring is animating toward, so the readouts can climb.
+// ---------------------------------------------------------------------------
+
+/**
+ * The app's bigint balances are ×100 fixed-point. Springs animate floats, so
+ * convert a balance to whole-PRF units (e.g. 1000n*100 → 1000) for the spring
+ * target, then format the live float with `fmtChips`.
+ */
+export function fpToFloat(fp: bigint): number {
+  return Number(fp) / 100;
+}
+
+/** Proofs: en-US grouping, up to 2dp, no trailing zeros (design fmtChips). */
+export function fmtChips(n: number): string {
+  if (n == null || Number.isNaN(n)) n = 0;
+  const v = Math.round(n * 100) / 100;
+  return v.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Bigint ×100 fp → design-style chips string (grouping, up to 2dp, no trailing
+ * zeros). Same visual rule as `fmtChips` but fed the real bigint balance, so
+ * static balances on every surface match the screenshots exactly.
+ */
+export function fmtChipsFp(fp: bigint): string {
+  return fmtChips(fpToFloat(fp));
+}
+
+/** Gas (tETH): quiet, three decimals (design fmtGas). */
+export function fmtGas(n: number): string {
+  if (n == null || Number.isNaN(n)) n = 0;
+  return Math.max(0, n).toFixed(3);
+}
+
+/** Busy-phase CTA label (design txCta). */
+export function txCta(phase: TxPhase): string {
+  if (phase === "signing") return "Awaiting signature…";
+  if (phase === "pending") return "Confirming…";
+  return "…";
+}
+
 function errMessage(err: unknown): string {
   if (err instanceof Error) {
     // viem wraps revert reasons; the short message is the user-facing line.
