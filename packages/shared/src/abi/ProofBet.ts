@@ -431,6 +431,44 @@ export const proofBetAbi = [
     "stateMutability": "nonpayable"
   },
   {
+    "type": "function",
+    "name": "withdrawBankroll",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "BankrollShortfall",
+    "inputs": [
+      {
+        "name": "requestId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "fullProfit",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "paidProfit",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "type": "event",
     "name": "BetPlaced",
     "inputs": [
@@ -659,11 +697,6 @@ export const proofBetAbi = [
   },
   {
     "type": "error",
-    "name": "BankrollDepleted",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "BetNotFound",
     "inputs": [
       {
@@ -679,6 +712,22 @@ export const proofBetAbi = [
     "inputs": [
       {
         "name": "maxAllowed",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InsufficientBankroll",
+    "inputs": [
+      {
+        "name": "available",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "requested",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -741,6 +790,16 @@ export const proofBetAbi = [
         "internalType": "address"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "PlinkoInvalidRows",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PlinkoSlotOutOfRange",
+    "inputs": []
   },
   {
     "type": "error",

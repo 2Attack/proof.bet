@@ -11,6 +11,11 @@ import { Risk } from "../IProofBet.sol";
 ///         the VRF callback.
 ///         rows: 8..16 inclusive.  Risk: Low=0, Medium=1, High=2.
 library PlinkoTables {
+    /// @dev Slot index exceeded the table size (unreachable when slot = popcount of rows bits).
+    error PlinkoSlotOutOfRange();
+    /// @dev rows outside the supported 8..16 range.
+    error PlinkoInvalidRows();
+
     /// @notice Return the ×100 multiplier for a given (rows, risk, slot) triple.
     /// @param rows   Number of Plinko peg rows (8..16).
     /// @param risk   Risk tier.
@@ -25,53 +30,53 @@ library PlinkoTables {
             if (risk == Risk.Low) {
                 // slots 0..8
                 uint256[9] memory t = [uint256(569), 340, 171, 64, 25, 64, 171, 340, 569];
-                require(slot < 9, "PlinkoTables: slot OOB");
+                if (slot >= 9) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.Medium) {
                 // slots 0..8
                 uint256[9] memory t = [uint256(1100), 513, 178, 36, 10, 36, 178, 513, 1100];
-                require(slot < 9, "PlinkoTables: slot OOB");
+                if (slot >= 9) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.High) {
                 // slots 0..8
                 uint256[9] memory t = [uint256(1620), 630, 167, 20, 3, 20, 167, 630, 1620];
-                require(slot < 9, "PlinkoTables: slot OOB");
+                if (slot >= 9) revert PlinkoSlotOutOfRange();
                 return t[slot];
             }
         } else if (rows == 9) {
             if (risk == Risk.Low) {
                 // slots 0..9
                 uint256[10] memory t = [uint256(633), 402, 224, 100, 34, 34, 100, 224, 402, 633];
-                require(slot < 10, "PlinkoTables: slot OOB");
+                if (slot >= 10) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.Medium) {
                 // slots 0..9
                 uint256[10] memory t = [uint256(1290), 659, 272, 76, 14, 14, 76, 272, 659, 1290];
-                require(slot < 10, "PlinkoTables: slot OOB");
+                if (slot >= 10) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.High) {
                 // slots 0..9
                 uint256[10] memory t = [uint256(1960), 856, 284, 55, 4, 4, 55, 284, 856, 1960];
-                require(slot < 10, "PlinkoTables: slot OOB");
+                if (slot >= 10) revert PlinkoSlotOutOfRange();
                 return t[slot];
             }
         } else if (rows == 10) {
             if (risk == Risk.Low) {
                 // slots 0..10
                 uint256[11] memory t = [uint256(699), 466, 280, 143, 57, 25, 57, 143, 280, 466, 699];
-                require(slot < 11, "PlinkoTables: slot OOB");
+                if (slot >= 11) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.Medium) {
                 // slots 0..10
                 uint256[11] memory t =
                     [uint256(1470), 811, 379, 134, 29, 10, 29, 134, 379, 811, 1470];
-                require(slot < 11, "PlinkoTables: slot OOB");
+                if (slot >= 11) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.High) {
                 // slots 0..10
                 uint256[11] memory t =
                     [uint256(2310), 1110, 431, 116, 15, 3, 15, 116, 431, 1110, 2310];
-                require(slot < 11, "PlinkoTables: slot OOB");
+                if (slot >= 11) revert PlinkoSlotOutOfRange();
                 return t[slot];
             }
         } else if (rows == 11) {
@@ -79,19 +84,19 @@ library PlinkoTables {
                 // slots 0..11
                 uint256[12] memory t =
                     [uint256(763), 529, 338, 190, 87, 33, 33, 87, 190, 338, 529, 763];
-                require(slot < 12, "PlinkoTables: slot OOB");
+                if (slot >= 12) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.Medium) {
                 // slots 0..11
                 uint256[12] memory t =
                     [uint256(1670), 975, 500, 208, 60, 13, 13, 60, 208, 500, 975, 1670];
-                require(slot < 12, "PlinkoTables: slot OOB");
+                if (slot >= 12) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.High) {
                 // slots 0..11
                 uint256[12] memory t =
                     [uint256(2690), 1390, 609, 203, 40, 4, 4, 40, 203, 609, 1390, 2690];
-                require(slot < 12, "PlinkoTables: slot OOB");
+                if (slot >= 12) revert PlinkoSlotOutOfRange();
                 return t[slot];
             }
         } else if (rows == 12) {
@@ -99,19 +104,19 @@ library PlinkoTables {
                 // slots 0..12
                 uint256[13] memory t =
                     [uint256(828), 593, 397, 240, 124, 51, 25, 51, 124, 240, 397, 593, 828];
-                require(slot < 13, "PlinkoTables: slot OOB");
+                if (slot >= 13) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.Medium) {
                 // slots 0..12
                 uint256[13] memory t =
                     [uint256(1870), 1140, 632, 296, 107, 26, 11, 26, 107, 296, 632, 1140, 1870];
-                require(slot < 13, "PlinkoTables: slot OOB");
+                if (slot >= 13) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.High) {
                 // slots 0..12
                 uint256[13] memory t =
                     [uint256(3090), 1700, 814, 317, 86, 12, 4, 12, 86, 317, 814, 1700, 3090];
-                require(slot < 13, "PlinkoTables: slot OOB");
+                if (slot >= 13) revert PlinkoSlotOutOfRange();
                 return t[slot];
             }
         } else if (rows == 13) {
@@ -119,19 +124,19 @@ library PlinkoTables {
                 // slots 0..13
                 uint256[14] memory t =
                     [uint256(892), 656, 456, 292, 166, 78, 31, 31, 78, 166, 292, 456, 656, 892];
-                require(slot < 14, "PlinkoTables: slot OOB");
+                if (slot >= 14) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.Medium) {
                 // slots 0..13
                 uint256[14] memory t =
                     [uint256(2070), 1320, 775, 399, 167, 51, 13, 13, 51, 167, 399, 775, 1320, 2070];
-                require(slot < 14, "PlinkoTables: slot OOB");
+                if (slot >= 14) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.High) {
                 // slots 0..13
                 uint256[14] memory t =
                     [uint256(3510), 2030, 1050, 459, 154, 32, 5, 5, 32, 154, 459, 1050, 2030, 3510];
-                require(slot < 14, "PlinkoTables: slot OOB");
+                if (slot >= 14) revert PlinkoSlotOutOfRange();
                 return t[slot];
             }
         } else if (rows == 14) {
@@ -140,7 +145,7 @@ library PlinkoTables {
                 uint256[15] memory t = [
                     uint256(956), 720, 516, 346, 211, 111, 48, 25, 48, 111, 211, 346, 516, 720, 956
                 ];
-                require(slot < 15, "PlinkoTables: slot OOB");
+                if (slot >= 15) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.Medium) {
                 // slots 0..14
@@ -161,7 +166,7 @@ library PlinkoTables {
                     1510,
                     2280
                 ];
-                require(slot < 15, "PlinkoTables: slot OOB");
+                if (slot >= 15) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.High) {
                 // slots 0..14
@@ -182,7 +187,7 @@ library PlinkoTables {
                     2380,
                     3950
                 ];
-                require(slot < 15, "PlinkoTables: slot OOB");
+                if (slot >= 15) revert PlinkoSlotOutOfRange();
                 return t[slot];
             }
         } else if (rows == 15) {
@@ -206,7 +211,7 @@ library PlinkoTables {
                     783,
                     1020
                 ];
-                require(slot < 16, "PlinkoTables: slot OOB");
+                if (slot >= 16) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.Medium) {
                 // slots 0..15
@@ -228,7 +233,7 @@ library PlinkoTables {
                     1700,
                     2490
                 ];
-                require(slot < 16, "PlinkoTables: slot OOB");
+                if (slot >= 16) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.High) {
                 // slots 0..15
@@ -250,7 +255,7 @@ library PlinkoTables {
                     2760,
                     4420
                 ];
-                require(slot < 16, "PlinkoTables: slot OOB");
+                if (slot >= 16) revert PlinkoSlotOutOfRange();
                 return t[slot];
             }
         } else if (rows == 16) {
@@ -275,7 +280,7 @@ library PlinkoTables {
                     847,
                     1080
                 ];
-                require(slot < 17, "PlinkoTables: slot OOB");
+                if (slot >= 17) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.Medium) {
                 // slots 0..16
@@ -298,7 +303,7 @@ library PlinkoTables {
                     1890,
                     2710
                 ];
-                require(slot < 17, "PlinkoTables: slot OOB");
+                if (slot >= 17) revert PlinkoSlotOutOfRange();
                 return t[slot];
             } else if (risk == Risk.High) {
                 // slots 0..16
@@ -321,11 +326,11 @@ library PlinkoTables {
                     3150,
                     4890
                 ];
-                require(slot < 17, "PlinkoTables: slot OOB");
+                if (slot >= 17) revert PlinkoSlotOutOfRange();
                 return t[slot];
             }
         }
-        revert("PlinkoTables: invalid rows");
+        revert PlinkoInvalidRows();
     }
 
     /// @notice Return the maximum ×100 multiplier for a given (rows, risk) pair.
@@ -405,6 +410,6 @@ library PlinkoTables {
                 return 4890;
             }
         }
-        revert("PlinkoTables: invalid rows");
+        revert PlinkoInvalidRows();
     }
 }

@@ -72,15 +72,24 @@ interface IProofBet {
         bool win
     );
 
+    /// @notice Emitted when a winning payout's profit exceeded the bankroll and was
+    ///         clamped to what the house could cover. The settled bet's `payout` in
+    ///         {BetSettled} already reflects the clamped amount; this event records the
+    ///         shortfall for auditing. Never fires in normal operation (per-bet caps
+    ///         keep the house solvent) — only under extreme concurrent liability.
+    /// @param fullProfit  Profit the player would have received if fully solvent.
+    /// @param paidProfit  Profit actually paid (== bankroll at settlement time).
+    event BankrollShortfall(uint256 indexed requestId, uint256 fullProfit, uint256 paidProfit);
+
     // ---------------------------------------------------------------------
     // Custom errors (no require-strings).
     // ---------------------------------------------------------------------
 
     error ZeroAmount();
     error InsufficientInPlay(uint256 have, uint256 want);
+    error InsufficientBankroll(uint256 available, uint256 requested);
     error BetTooLarge(uint256 maxAllowed);
     error InvalidGameParams();
-    error BankrollDepleted();
     error BetNotFound(uint256 requestId);
     error AlreadySettled(uint256 requestId);
 

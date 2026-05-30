@@ -7,7 +7,7 @@ import {
 } from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 import { ProofBet } from "../src/ProofBet.sol";
 import { Proofs } from "../src/Proofs.sol";
-import { GameType, Risk, BetParams } from "../src/IProofBet.sol";
+import { IProofBet, GameType, Risk, BetParams } from "../src/IProofBet.sol";
 
 // ---------------------------------------------------------------------------
 // Malicious token for reentrancy testing
@@ -581,6 +581,110 @@ contract ProofBetTest is Test {
         assertEq(_game.bankroll(), BANKROLL_SEED, "bankroll()");
         assertEq(_game.inPlayOf(PLAYER), 100e18, "inPlayOf()");
         assertEq(_game.nonceOf(PLAYER), 0, "nonceOf() initial");
+    }
+
+    // -----------------------------------------------------------------------
+    // Bankroll withdrawal (owner liquidity recovery)
+    // -----------------------------------------------------------------------
+
+    function test_WithdrawBankrollReturnsLiquidity() public {
+        uint256 ownerBalBefore = _token.balanceOf(OWNER);
+        vm.prank(OWNER);
+        _game.withdrawBankroll(100_000e18);
+        assertEq(_game.bankroll(), BANKROLL_SEED - 100_000e18, "bankroll reduced");
+        assertEq(_token.balanceOf(OWNER), ownerBalBefore + 100_000e18, "owner received tokens");
+    }
+
+    function test_WithdrawBankrollOverBalanceReverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                bytes4(keccak256("InsufficientBankroll(uint256,uint256)")),
+                BANKROLL_SEED,
+                BANKROLL_SEED + 1
+            )
+        );
+        vm.prank(OWNER);
+        _game.withdrawBankroll(BANKROLL_SEED + 1);
+    }
+
+    function test_WithdrawBankrollNotOwnerReverts() public {
+        vm.expectRevert();
+        vm.prank(PLAYER);
+        _game.withdrawBankroll(1e18);
+    }
+
+    // -----------------------------------------------------------------------
+    // HIGH fix: insolvent payout is clamped, callback never reverts
+    // -----------------------------------------------------------------------
+
+    function test_InsolventPayoutClampedNoRevert() public {
+        // Reproduce the dangerous scenario: a winning bet whose profit exceeds the
+        // bankroll available at settlement time. The callback must pay what it can
+        // and NOT revert (a revert would strand the player's stake forever).
+        vm.startPrank(OWNER);
+        ProofBetHarness harness =
+            new ProofBetHarness(address(_token), _subId, address(_coordinator));
+        vm.stopPrank();
+        _coordinator.addConsumer(_subId, address(harness));
+
+        // Seed bankroll = 1,000 PRF → Limbo cap at target 200 = 1.5% = 15 PRF.
+        uint256 seed = 1000e18;
+        vm.startPrank(OWNER);
+        _token.mint(OWNER, seed);
+        _token.approve(address(harness), seed);
+        harness.seedBankroll(seed);
+        vm.stopPrank();
+
+        // Player deposits and places a max bet that WINS (golden vrfWord, crash 843 ≥ 200).
+        uint256 stake = 15e18;
+        uint256 targetX100 = 200;
+        vm.startPrank(PLAYER);
+        _token.approve(address(harness), type(uint256).max);
+        harness.deposit(stake);
+        vm.stopPrank();
+
+        bytes32 clientSeed = 0x3c4d6dde74e2d6796883c3ebcc27b17be2c8cba4edbf9a4da229d94d02d146f7;
+        BetParams memory params = BetParams({ target: targetX100, rows: 0, risk: Risk.Low });
+        vm.prank(PLAYER);
+        uint256 requestId = harness.placeBet(GameType.Limbo, stake, clientSeed, params);
+
+        // Drain the bankroll below the pending profit (profit = stake = 15 PRF).
+        // Leave only 5 PRF — less than the 15 PRF profit owed on a win.
+        uint256 leftover = 5e18;
+        vm.prank(OWNER);
+        harness.withdrawBankroll(seed - leftover);
+        assertEq(harness.bankroll(), leftover, "bankroll drained to leftover");
+
+        uint256 inPlayBeforeSettle = harness.inPlayOf(PLAYER);
+
+        // Expect the shortfall event: full profit 15 PRF, paid only the 5 PRF leftover.
+        vm.expectEmit(true, false, false, true, address(harness));
+        emit IProofBet.BankrollShortfall(requestId, stake, leftover);
+
+        uint256 vrfWord =
+            8_790_951_480_701_132_859_224_755_765_811_319_828_226_411_200_449_165_407_444_523_148_757_165_036_634;
+        uint256[] memory words = new uint256[](1);
+        words[0] = vrfWord;
+        // MUST NOT revert.
+        harness.exposedFulfill(requestId, words);
+
+        // Player credited stake + clamped profit = 15 + 5 = 20 PRF; bankroll floored at 0.
+        assertEq(
+            harness.inPlayOf(PLAYER),
+            inPlayBeforeSettle + stake + leftover,
+            "payout clamped to stake + available bankroll"
+        );
+        assertEq(harness.bankroll(), 0, "bankroll floored at zero");
+
+        // And the player can still withdraw the credited amount.
+        uint256 tokenBefore = _token.balanceOf(PLAYER);
+        vm.prank(PLAYER);
+        harness.withdraw();
+        assertEq(
+            _token.balanceOf(PLAYER) - tokenBefore,
+            stake + leftover,
+            "player withdraws the clamped payout"
+        );
     }
 
     function test_MaxBetScalesWithBankroll() public {

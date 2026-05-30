@@ -241,18 +241,26 @@ contract ProofBet is IProofBet, VRFConsumerBaseV2Plus, ReentrancyGuard {
                 _settlePlinko(uint256(finalSeed), bet.stake, bet.params.rows, bet.params.risk);
         }
 
-        // Update balances: credit payout to player, adjust bankroll.
-        _playerBalances[bet.player] += payout;
-
-        // Bankroll adjustment: stake entered the contract's total token balance when placed.
-        // Now stake - payout leaves bankroll (if loss) or payout - stake leaves (if win).
+        // Settle against the bankroll, then credit the player. On a win, `stake` is
+        // covered by the escrowed pending stake; only the profit (payout - stake) is
+        // drawn from the house bankroll. If the bankroll cannot cover the full profit
+        // (only possible under extreme concurrent liability), pay what it can rather
+        // than reverting: a revert here would strand the player's stake forever, since
+        // the VRF coordinator does not retry a reverting callback.
         if (payout >= bet.stake) {
-            // Player wins more than stake — bankroll shrinks.
-            _bankroll -= (payout - bet.stake);
+            uint256 profit = payout - bet.stake;
+            if (profit > _bankroll) {
+                emit BankrollShortfall(requestId, profit, _bankroll);
+                profit = _bankroll;
+                payout = bet.stake + profit;
+            }
+            _bankroll -= profit;
         } else {
             // House profits — bankroll grows.
             _bankroll += (bet.stake - payout);
         }
+
+        _playerBalances[bet.player] += payout;
 
         emit BetSettled(
             requestId, bet.player, bet.gameType, vrfWord, finalSeed, outcomeX100, payout, win
@@ -319,6 +327,19 @@ contract ProofBet is IProofBet, VRFConsumerBaseV2Plus, ReentrancyGuard {
         if (amount == 0) revert ZeroAmount();
         _bankroll += amount;
         _proofs.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    /// @notice Withdraw seeded liquidity / accrued profit from the bankroll.
+    /// @dev CEI + onlyOwner: only the house bankroll is withdrawable — escrowed player
+    ///      balances and pending stakes are never reachable through this path.
+    /// @param amount Proofs (PRF) to remove from the bankroll.
+    function withdrawBankroll(uint256 amount) external onlyOwner {
+        if (amount == 0) revert ZeroAmount();
+        uint256 current = _bankroll;
+        if (amount > current) revert InsufficientBankroll(current, amount);
+        // CEI: reduce bankroll BEFORE transfer.
+        _bankroll = current - amount;
+        _proofs.safeTransfer(msg.sender, amount);
     }
 
     // =========================================================================

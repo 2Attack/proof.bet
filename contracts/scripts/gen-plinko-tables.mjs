@@ -9,6 +9,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tablesPath = join(here, "..", "..", "packages", "shared", "src", "tables", "plinko-tables.json");
@@ -47,7 +48,7 @@ function buildLookup() {
       // Build [uint256(x), uint256(y), ...] for all elements
       const multsLiteral = mults.map((v, i) => i === 0 ? `uint256(${v})` : `${v}`).join(", ");
       lines.push(`                uint256[${mults.length}] memory t = [${multsLiteral}];`);
-      lines.push(`                require(slot < ${mults.length}, "PlinkoTables: slot OOB");`);
+      lines.push(`                if (slot >= ${mults.length}) revert PlinkoSlotOutOfRange();`);
       lines.push(`                return t[slot];`);
     }
     lines.push(`            }`);
@@ -96,26 +97,39 @@ import { Risk } from "../IProofBet.sol";
 ///         the VRF callback.
 ///         rows: 8..16 inclusive.  Risk: Low=0, Medium=1, High=2.
 library PlinkoTables {
+    /// @dev Slot index exceeded the table size (unreachable when slot = popcount of rows bits).
+    error PlinkoSlotOutOfRange();
+    /// @dev rows outside the supported 8..16 range.
+    error PlinkoInvalidRows();
+
     /// @notice Return the ×100 multiplier for a given (rows, risk, slot) triple.
     /// @param rows   Number of Plinko peg rows (8..16).
     /// @param risk   Risk tier.
     /// @param slot   Ball landing slot (0..rows, popcount of the path bits).
     function slotMultiplierX100(uint8 rows, Risk risk, uint256 slot) internal pure returns (uint256) {
 ${lookup}
-        revert("PlinkoTables: invalid rows");
+        revert PlinkoInvalidRows();
     }
 
     /// @notice Return the maximum ×100 multiplier for a given (rows, risk) pair.
     ///         This is the worst-case payout per unit stake — used by maxBet().
     function maxMultiplierX100(uint8 rows, Risk risk) internal pure returns (uint256) {
 ${maxLookup}
-        revert("PlinkoTables: invalid rows");
+        revert PlinkoInvalidRows();
     }
 }
 `;
 
 writeFileSync(outPath, sol, "utf8");
 console.log(`Generated ${outPath}`);
+
+// Normalize to `forge fmt` style so the committed file stays lint-clean (best-effort).
+try {
+  execFileSync("forge", ["fmt", outPath], { stdio: "ignore" });
+  console.log("Formatted with forge fmt.");
+} catch {
+  console.warn("forge fmt unavailable — run `forge fmt` manually before committing.");
+}
 
 // Sanity check: count entries
 let count = 0;
