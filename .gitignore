@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+.pnp.*
+
+# builds
+app/.next/
+app/out/
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+dist/
+
+# env
+.env
+.env.local
+.env*.local
+!.env.example
+
+# misc
+.DS_Store
+*.log
+.idea/
+.vercel
