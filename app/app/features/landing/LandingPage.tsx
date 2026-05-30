@@ -146,6 +146,48 @@ function ArtPlinko() {
   );
 }
 
+function ArtDice() {
+  const pip = (x: number, y: number) => <circle cx={x} cy={y} r="3.4" fill="var(--ink-mut)" />;
+  return (
+    <svg viewBox="0 0 220 130" className="gc-art" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <rect x="58" y="34" width="62" height="62" rx="13" fill="var(--surf-3)" stroke="var(--line-2)" strokeWidth="1.4" transform="rotate(-9 89 65)" />
+      <g transform="rotate(-9 89 65)">{pip(74, 50)}{pip(89, 65)}{pip(104, 80)}</g>
+      <rect x="112" y="46" width="54" height="54" rx="12" fill="var(--surf-2)" stroke="var(--acc-line)" strokeWidth="1.4" transform="rotate(7 139 73)" />
+      <g transform="rotate(7 139 73)"><circle cx="126" cy="60" r="3.2" fill="var(--acc)" /><circle cx="152" cy="86" r="3.2" fill="var(--acc)" /></g>
+    </svg>
+  );
+}
+
+function ArtCrash() {
+  return (
+    <svg viewBox="0 0 220 130" className="gc-art" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      {[0.4, 0.7].map((f, i) => (
+        <line key={i} x1="0" x2="220" y1={130 * f} y2={130 * f} stroke="var(--line)" strokeWidth="1" />
+      ))}
+      <path d="M0 118 C40 110 80 80 120 36 L132 22" fill="none" stroke="var(--acc)" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M132 22 L150 70 L168 50 L210 116" fill="none" stroke="var(--loss)" strokeWidth="2.2" strokeLinecap="round" strokeDasharray="1 5" opacity="0.85" />
+      <circle cx="132" cy="22" r="5" fill="var(--loss)" />
+    </svg>
+  );
+}
+
+function ArtMines() {
+  const cells: React.ReactNode[] = [];
+  for (let i = 0; i < 9; i++) {
+    const cx = 64 + (i % 3) * 32;
+    const cy = 33 + Math.floor(i / 3) * 32;
+    cells.push(<rect key={i} x={cx} y={cy} width="26" height="26" rx="6" fill="var(--surf-3)" stroke="var(--line)" strokeWidth="1" />);
+  }
+  return (
+    <svg viewBox="0 0 220 130" className="gc-art" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      {cells}
+      <path d="M110 44 l7 9 -7 9 -7 -9 z" fill="var(--acc)" />
+      <circle cx="142" cy="78" r="7" fill="var(--loss)" />
+      <path d="M142 67 v-5 M142 89 v5 M131 78 h-5 M153 78 h5" stroke="var(--loss)" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ---------- hero stats — spring count-up on first view, then drift ----------
 function HeroStats() {
   const [ref, inView] = useInView();
@@ -503,57 +545,83 @@ function GamesSection() {
         <span className="kicker">all provably fair · the library grows</span>
       </div>
       <div className="lg-grid">
-        <Link href="/games/plinko" style={{ textDecoration: "none" }}>
-          <div className="game-card featured" style={{ cursor: "pointer" }}>
-            <div className="gc-visual" style={{ minHeight: 130 }}>
-              <ArtPlinko />
-              <div className="gc-badges">
-                <span className="gc-pill new">New</span>
-                <span className="gc-pill live">
-                  <span className="chip-dot" />Live
-                </span>
-              </div>
+        <Link href="/games/plinko" className="game-card featured" style={{ textDecoration: "none" }}>
+          <div className="gc-visual">
+            <ArtPlinko />
+            <div className="gc-badges">
+              <span className="gc-pill new">New</span>
+              <span className="gc-pill live">
+                <span className="chip-dot" />Live
+              </span>
             </div>
-            <div className="gc-body">
-              <div className="gc-title serif">Plinko</div>
-              <div className="gc-tag">Drop the ball. Ride the edges.</div>
-              <div className="gc-foot">
-                <span className="gc-fair">
-                  <span className="chip-dot" />provably fair
-                </span>
-                <span className="gc-edge mono">~1.9% edge</span>
-                <span className="gc-play">Play →</span>
-              </div>
+          </div>
+          <div className="gc-body">
+            <div className="gc-title serif">Plinko</div>
+            <div className="gc-tag">Drop the ball. Ride the edges.</div>
+            <div className="gc-foot">
+              <span className="gc-fair">
+                <span className="chip-dot" />provably fair
+              </span>
+              <span className="gc-edge mono">~1.9% edge</span>
+              <span className="gc-play">Play →</span>
             </div>
           </div>
         </Link>
-        <Link href="/games/limbo" style={{ textDecoration: "none" }}>
-          <div className="game-card" style={{ cursor: "pointer" }}>
-            <div className="gc-visual" style={{ minHeight: 130 }}>
-              <ArtLimbo />
-              <div className="gc-badges">
-                <span className="gc-pill live">
-                  <span className="chip-dot" />Live
-                </span>
-              </div>
+        <Link href="/games/limbo" className="game-card" style={{ textDecoration: "none" }}>
+          <div className="gc-visual">
+            <ArtLimbo />
+            <div className="gc-badges">
+              <span className="gc-pill live">
+                <span className="chip-dot" />Live
+              </span>
             </div>
-            <div className="gc-body">
-              <div className="gc-title serif">Limbo</div>
-              <div className="gc-tag">Set a target. Beat the climb.</div>
-              <div className="gc-foot">
-                <span className="gc-fair">
-                  <span className="chip-dot" />provably fair
-                </span>
-                <span className="gc-edge mono">2% edge</span>
-                <span className="gc-play">Play →</span>
-              </div>
+          </div>
+          <div className="gc-body">
+            <div className="gc-title serif">Limbo</div>
+            <div className="gc-tag">Set a target. Beat the climb.</div>
+            <div className="gc-foot">
+              <span className="gc-fair">
+                <span className="chip-dot" />provably fair
+              </span>
+              <span className="gc-edge mono">2% edge</span>
+              <span className="gc-play">Play →</span>
             </div>
           </div>
         </Link>
+        {SOON_GAMES.map((g) => {
+          const Art = g.art;
+          return (
+            <div className="game-card soon" key={g.name} aria-disabled="true">
+              <div className="gc-visual">
+                <Art />
+                <div className="gc-badges">
+                  <span className="gc-pill soon">Soon</span>
+                </div>
+              </div>
+              <div className="gc-body">
+                <div className="gc-title serif">{g.name}</div>
+                <div className="gc-tag">{g.tag}</div>
+                <div className="gc-foot">
+                  <span className="gc-fair">
+                    <span className="chip-dot" />provably fair
+                  </span>
+                  <span className="gc-edge mono">{g.edge}</span>
+                  <span className="gc-play">Coming soon</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
 }
+
+const SOON_GAMES = [
+  { name: "Crash", tag: "Cash out before the bust.", edge: "2% edge", art: ArtCrash },
+  { name: "Dice", tag: "Roll over or under your line.", edge: "2% edge", art: ArtDice },
+  { name: "Mines", tag: "Find the gems, dodge the bombs.", edge: "2% edge", art: ArtMines },
+];
 
 // ---------- how-it-works — illustrated player journey ----------
 function HowArtConnect() {
