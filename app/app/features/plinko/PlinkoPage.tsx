@@ -336,7 +336,8 @@ export function PlinkoPage() {
         </div>
       </div>
 
-      {phase === "pending" && <PendingToast onDone={() => settle()} />}
+      {/* PendingToast fires onDone only after VRF resolves (phase transitions to "dropping") */}
+      {phase === "pending" && <PendingToast onDone={() => { /* no-op: dropping phase set by hook */ }} />}
     </div>
   );
 }

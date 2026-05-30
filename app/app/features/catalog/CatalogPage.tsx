@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { TopNav } from "../../components/TopNav";
@@ -52,9 +52,13 @@ function CatalogContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { address } = useApp();
+  const faucetOpenedRef = useRef(false);
 
   useEffect(() => {
-    if (searchParams?.get("openFaucet") === "1" && address) {
+    if (searchParams?.get("openFaucet") === "1" && address && !faucetOpenedRef.current) {
+      faucetOpenedRef.current = true;
+      // Clear the param first so back-nav doesn't re-trigger
+      router.replace("/games");
       router.push("/faucet");
     }
   }, [searchParams, address, router]);

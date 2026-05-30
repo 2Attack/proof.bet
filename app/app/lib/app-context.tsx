@@ -53,9 +53,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const maxBetLimbo = useCallback(
     (targetX100: bigint): bigint => {
       // max profit ≤ 1.5% of bankroll
-      const target = targetX100;
-      if (target <= 100n) return snap.bankroll;
-      return (snap.bankroll * 15n) / ((target - 100n) * 1000n);
+      // All values in ×100 fixed-point.
+      // maxBet100 = bankroll100 × 1.5 / (target100 - 100)
+      // = bankroll100 × 15 / ((target100 - 100) × 10)
+      if (targetX100 <= 100n) return snap.bankroll;
+      return (snap.bankroll * 15n) / ((targetX100 - 100n) * 10n);
     },
     [snap.bankroll],
   );

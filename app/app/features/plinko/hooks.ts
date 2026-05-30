@@ -2,6 +2,8 @@
 
 /**
  * Plinko bet hook — same pattern as Limbo, different game params.
+ * Uses resolveBet to write the fully-settled round into the store
+ * so the Auditor and Verify drawer are consistent.
  */
 
 import { useState, useCallback, useRef } from "react";
@@ -10,7 +12,7 @@ import { GameType, type BetParams, type Risk } from "@proofbet/shared/types";
 import { settleRound } from "@proofbet/shared/fairness";
 import {
   placeBetMock,
-  settleBetMock,
+  resolveBet,
   type MockRound,
 } from "../../lib/mock-store";
 import { randHex, fakeVRFLatency } from "../../lib/mock-utils";
@@ -44,15 +46,15 @@ export function usePlinkoBet() {
 
       try {
         if (config.isMock) {
-          const vrfWord = BigInt("0x" + randHex(32).slice(2));
-          const params: BetParams = { target: 0n, rows, risk };
           const requestId = randHex(4);
           const txHash = randHex(32) as Hex;
+          const params: BetParams = { target: 0n, rows, risk };
 
+          // Lock stake from in-play immediately
           placeBetMock({
             requestId,
             txHash,
-            vrfWord,
+            vrfWord: 0n,
             clientSeed,
             nonce,
             game: GameType.Plinko,
@@ -64,13 +66,12 @@ export function usePlinkoBet() {
             payout: 0n,
           });
 
-          setPhase("pending");
-
-          const vrfWordResolved = await fakeVRFLatency();
+          // Fake VRF latency
+          const vrfWord = await fakeVRFLatency();
 
           const settlement = settleRound(
             GameType.Plinko,
-            vrfWordResolved,
+            vrfWord,
             clientSeed,
             nonce,
             params,
@@ -80,7 +81,7 @@ export function usePlinkoBet() {
           const settled: PlinkoRound = {
             requestId,
             txHash,
-            vrfWord: vrfWordResolved,
+            vrfWord,
             clientSeed,
             nonce,
             game: GameType.Plinko,
@@ -97,7 +98,9 @@ export function usePlinkoBet() {
             multiplierX100: settlement.outcomeX100,
           };
 
-          settleBetMock(requestId);
+          // Write the FULLY resolved round into the store
+          resolveBet(settled);
+
           setRound(settled);
           setPhase("dropping");
         } else {

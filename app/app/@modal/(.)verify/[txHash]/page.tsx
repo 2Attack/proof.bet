@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "../../../lib/app-context";
 import { VerifyDrawerContent } from "../../../features/verify/VerifyDrawer";
@@ -8,10 +9,13 @@ export default function VerifyModal() {
   const router = useRouter();
   const { verifyRound } = useApp();
 
-  if (!verifyRound) {
-    router.replace("/verify");
-    return null;
-  }
+  useEffect(() => {
+    if (!verifyRound) {
+      router.replace("/verify");
+    }
+  }, [verifyRound, router]);
+
+  if (!verifyRound) return null;
 
   return (
     <>

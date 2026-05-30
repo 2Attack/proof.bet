@@ -113,6 +113,26 @@ export function settleBetMock(requestId: string): void {
   notify();
 }
 
+/**
+ * Resolve a bet with the FINAL settled round (all fields resolved).
+ * Replaces the placeholder-based settleBetMock — ensures the store
+ * contains the real vrfWord, finalSeed, outcomeX100, win, payout.
+ * This keeps the Auditor and per-round Verify drawer consistent.
+ */
+export function resolveBet(settled: MockRound): void {
+  // Clear pending round regardless of requestId match
+  state.pendingRound = null;
+  if (settled.win) {
+    state.inPlay += settled.payout;
+    state.bankroll -= settled.payout - settled.stake;
+  } else {
+    state.bankroll += settled.stake;
+  }
+  state.nonce += 1n;
+  state.rounds = [settled, ...state.rounds].slice(0, 50);
+  notify();
+}
+
 export function reset(): void {
   state.address = null;
   state.walletPRF = 0n;

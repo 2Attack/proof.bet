@@ -246,11 +246,18 @@ export function LimboPage() {
   else if (overBalance) cta = "Insufficient balance";
   else if (overMax) cta = "Above max bet";
 
-  // Spring climbing number
+  // Spring climbing number (honors prefers-reduced-motion)
   const springVal = useMotionValue(1.0);
   useEffect(() => {
     if (phase === "revealing" && round) {
       const target_crash = Number(round.crashX100) / 100;
+      const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      if (reduced) {
+        setDisplayVal(target_crash);
+        settle();
+        setRecent((r) => [{ crashX100: round.crashX100, win: round.win }, ...r].slice(0, 6));
+        return;
+      }
       const ctrl = animate(springVal, target_crash, {
         type: "spring",
         stiffness: 38,

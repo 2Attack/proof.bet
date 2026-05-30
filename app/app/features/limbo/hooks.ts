@@ -12,7 +12,7 @@ import { GameType, type BetParams } from "@proofbet/shared/types";
 import { settleRound } from "@proofbet/shared/fairness";
 import {
   placeBetMock,
-  settleBetMock,
+  resolveBet,
   type MockRound,
 } from "../../lib/mock-store";
 import { randHex, fakeVRFLatency } from "../../lib/mock-utils";
@@ -21,7 +21,6 @@ import { config } from "../../lib/config";
 export type BetPhase = "idle" | "pending" | "revealing" | "settled";
 
 export interface LimboRound extends MockRound {
-  // Limbo-specific conveniences already in MockRound
   crashX100: bigint;
   targetX100: bigint;
 }
@@ -45,22 +44,19 @@ export function usePlaceBet() {
 
       try {
         if (config.isMock) {
-          const vrfWord = BigInt("0x" + randHex(32).slice(2));
+          const requestId = randHex(4);
+          const txHash = randHex(32) as Hex;
           const params: BetParams = {
             target: targetX100,
             rows: 0,
             risk: 0,
           };
 
-          // Build round with stored inputs FIRST, settle with same inputs
-          const requestId = randHex(4);
-          const txHash = randHex(32) as Hex;
-
-          // Put mock bet in "pending" state in the store
+          // Lock stake from in-play immediately (placeholder round)
           placeBetMock({
             requestId,
             txHash,
-            vrfWord,
+            vrfWord: 0n,
             clientSeed,
             nonce,
             game: GameType.Limbo,
@@ -72,15 +68,13 @@ export function usePlaceBet() {
             payout: 0n,
           });
 
-          setPhase("pending");
+          // Fake VRF latency (3–8s)
+          const vrfWord = await fakeVRFLatency();
 
-          // Fake VRF latency
-          const vrfWordResolved = await fakeVRFLatency();
-
-          // Settle using the SAME shared fairness engine
+          // Settle using the SHARED fairness engine — SAME logic as the contract
           const settlement = settleRound(
             GameType.Limbo,
-            vrfWordResolved,
+            vrfWord,
             clientSeed,
             nonce,
             params,
@@ -90,7 +84,7 @@ export function usePlaceBet() {
           const settled: LimboRound = {
             requestId,
             txHash,
-            vrfWord: vrfWordResolved,
+            vrfWord,
             clientSeed,
             nonce,
             game: GameType.Limbo,
@@ -104,10 +98,9 @@ export function usePlaceBet() {
             targetX100,
           };
 
-          // Update the store with the settled round
-          settleBetMock(requestId);
+          // Write the FULLY resolved round into the store — ensures Auditor is consistent
+          resolveBet(settled);
 
-          // Override the auto-settled store entry with correct values
           setRound(settled);
           setPhase("revealing");
         } else {
