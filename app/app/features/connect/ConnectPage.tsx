@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAccount, useConnect, useSwitchChain } from "wagmi";
+import { sepolia } from "wagmi/chains";
 import { TopNav } from "../../components/TopNav";
 import { randHex } from "../../lib/mock-utils";
 import { setAddress } from "../../lib/mock-store";
+import { config } from "../../lib/config";
 import type { Hex } from "viem";
 
 const WALLETS = [
@@ -33,19 +36,58 @@ const WALLETS = [
 
 export function ConnectPage() {
   const router = useRouter();
-  const [wrongNet, setWrongNet] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
+
+  // --- Live wallet state (inert in mock mode) ---
+  // `useAccount().chainId` reflects the WALLET's chain (useChainId would just
+  // echo the single configured chain). Undefined until connected.
+  const { isConnected, chainId: walletChainId } = useAccount();
+  const { connect: wagmiConnect, connectors } = useConnect();
+  const { switchChain } = useSwitchChain();
+  const [mockWrongNet, setMockWrongNet] = useState(true);
+
+  // Live: gate only once connected — don't disable the connect buttons before
+  // there's a wallet to read a chain from.
+  const wrongNet = config.isMock
+    ? mockWrongNet
+    : isConnected && walletChainId !== sepolia.id;
+
+  // Live: once connected on Sepolia, advance to the catalog.
+  useEffect(() => {
+    if (!config.isMock && isConnected && walletChainId === sepolia.id) {
+      router.push("/games?openFaucet=1");
+    }
+  }, [isConnected, walletChainId, router]);
+
+  const switchToSepolia = () => {
+    if (config.isMock) {
+      setMockWrongNet(false);
+    } else {
+      switchChain({ chainId: sepolia.id });
+    }
+  };
 
   const connect = (id: string) => {
     setConnecting(id);
-    setTimeout(() => {
-      // Generate a mock wallet address
-      const addr = randHex(20) as Hex;
-      setAddress(addr);
+    if (config.isMock) {
+      setTimeout(() => {
+        // Generate a mock wallet address
+        const addr = randHex(20) as Hex;
+        setAddress(addr);
+        setConnecting(null);
+        // After connect: go to catalog with faucet drawer open
+        router.push("/games?openFaucet=1");
+      }, 900);
+      return;
+    }
+    // Live: only the injected (browser-extension) connector is configured.
+    const connector =
+      connectors.find((c) => c.type === "injected") ?? connectors[0];
+    if (!connector) {
       setConnecting(null);
-      // After connect: go to catalog with faucet drawer open
-      router.push("/games?openFaucet=1");
-    }, 900);
+      return;
+    }
+    wagmiConnect({ connector });
   };
 
   return (
@@ -71,7 +113,7 @@ export function ConnectPage() {
               <button
                 className="seed-reroll"
                 style={{ color: "var(--loss)" }}
-                onClick={() => setWrongNet(false)}
+                onClick={switchToSepolia}
               >
                 Switch to Sepolia
               </button>

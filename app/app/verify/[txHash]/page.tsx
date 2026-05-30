@@ -1,22 +1,77 @@
 "use client";
 
-import { useEffect } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePublicClient } from "wagmi";
+import type { Hex } from "viem";
 import { useApp } from "../../lib/app-context";
+import { loadRoundByTxHash } from "../../lib/live-bet";
+import type { MockRound } from "../../lib/mock-store";
 import { TopNav } from "../../components/TopNav";
 import { VerifyDrawerContent } from "../../features/verify/VerifyDrawer";
 
 interface Props {
+  // Next 16: route params arrive as a Promise.
   params: Promise<{ txHash: string }>;
 }
 
-export default function VerifyRoundPage({ params }: Props) {
-  // We need to wait for params in Next.js 15+
-  const router = useRouter();
-  const { verifyRound } = useApp();
+type LoadState =
+  | { kind: "ready"; round: MockRound }
+  | { kind: "loading" }
+  | { kind: "notfound" };
 
-  // If we have the round in context, show it; otherwise show the auditor
-  if (!verifyRound) {
+export default function VerifyRoundPage({ params }: Props) {
+  const { txHash } = use(params);
+  const router = useRouter();
+  const { verifyRound, isMock } = useApp();
+  const publicClient = usePublicClient();
+  const [cold, setCold] = useState<LoadState>(
+    verifyRound ? { kind: "ready", round: verifyRound } : { kind: "loading" },
+  );
+
+  // Cold direct-load: if the round isn't in the session, reconstruct it from
+  // chain logs (live mode only — mock rounds exist only in memory).
+  useEffect(() => {
+    if (verifyRound) {
+      setCold({ kind: "ready", round: verifyRound });
+      return;
+    }
+    if (isMock || !publicClient) {
+      setCold({ kind: "notfound" });
+      return;
+    }
+    let active = true;
+    setCold({ kind: "loading" });
+    loadRoundByTxHash(publicClient, txHash as Hex)
+      .then((round) => {
+        if (!active) return;
+        setCold(round ? { kind: "ready", round } : { kind: "notfound" });
+      })
+      .catch(() => {
+        if (active) setCold({ kind: "notfound" });
+      });
+    return () => {
+      active = false;
+    };
+  }, [verifyRound, isMock, publicClient, txHash]);
+
+  if (cold.kind === "loading") {
+    return (
+      <div className="hp-screen">
+        <TopNav />
+        <div className="center-stage">
+          <div className="glass" style={{ maxWidth: 460, width: "100%", padding: 24, textAlign: "center" }}>
+            <div className="eyebrow" style={{ marginBottom: 12 }}>Loading round…</div>
+            <p className="mono" style={{ color: "var(--ink-dim)", fontSize: 12, wordBreak: "break-all" }}>
+              {txHash}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (cold.kind === "notfound") {
     return (
       <div className="hp-screen">
         <TopNav />
@@ -52,10 +107,7 @@ export default function VerifyRoundPage({ params }: Props) {
             flexDirection: "column",
           }}
         >
-          <VerifyDrawerContent
-            round={verifyRound}
-            onClose={() => router.back()}
-          />
+          <VerifyDrawerContent round={cold.round} onClose={() => router.back()} />
         </div>
       </div>
     </div>

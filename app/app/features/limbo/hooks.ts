@@ -8,6 +8,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import type { Hex } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
 import { GameType, type BetParams } from "@proofbet/shared/types";
 import { settleRound } from "@proofbet/shared/fairness";
 import {
@@ -15,8 +16,18 @@ import {
   resolveBet,
   type MockRound,
 } from "../../lib/mock-store";
+import {
+  setPendingLiveRound,
+  resolveLiveRound,
+  clearPendingLiveRound,
+} from "../../lib/rounds-store";
+import { placeBetLive } from "../../lib/live-bet";
+import { fpToWei, weiToFp } from "../../lib/units";
 import { randHex, fakeVRFLatency } from "../../lib/mock-utils";
 import { config } from "../../lib/config";
+
+const ZERO_SEED =
+  "0x0000000000000000000000000000000000000000000000000000000000000000" as Hex;
 
 export type BetPhase = "idle" | "pending" | "revealing" | "settled";
 
@@ -29,6 +40,8 @@ export function usePlaceBet() {
   const [phase, setPhase] = useState<BetPhase>("idle");
   const [round, setRound] = useState<LimboRound | null>(null);
   const inFlightRef = useRef(false);
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
 
   const placeBet = useCallback(
     async (
@@ -104,16 +117,76 @@ export function usePlaceBet() {
           setRound(settled);
           setPhase("revealing");
         } else {
-          throw new Error("Live mode not implemented yet");
+          if (!publicClient) throw new Error("No RPC client");
+          const params: BetParams = { target: targetX100, rows: 0, risk: 0 };
+
+          // Optimistic pending round (fp units for display); stake is already
+          // debited on-chain once placeBet confirms.
+          setPendingLiveRound({
+            requestId: "",
+            txHash: ZERO_SEED,
+            vrfWord: 0n,
+            clientSeed,
+            nonce,
+            game: GameType.Limbo,
+            stake,
+            params: { target: targetX100, rows: 0, risk: 0 },
+            finalSeed: ZERO_SEED,
+            outcomeX100: 0n,
+            win: false,
+            payout: 0n,
+          });
+
+          const res = await placeBetLive({
+            publicClient,
+            writeContractAsync,
+            game: GameType.Limbo,
+            stakeWei: fpToWei(stake),
+            clientSeed,
+            params,
+          });
+
+          // Recompute via the shared engine (same logic the contract ran) — this
+          // is what the Verify drawer will also reproduce.
+          const s = settleRound(
+            GameType.Limbo,
+            res.vrfWord,
+            clientSeed,
+            nonce,
+            params,
+            fpToWei(stake),
+          );
+
+          const settled: LimboRound = {
+            requestId: String(res.requestId),
+            txHash: res.txHash,
+            vrfWord: res.vrfWord,
+            clientSeed,
+            nonce,
+            game: GameType.Limbo,
+            stake,
+            params: { target: targetX100, rows: 0, risk: 0 },
+            finalSeed: res.finalSeed,
+            outcomeX100: res.outcomeX100,
+            win: res.win,
+            payout: weiToFp(res.payout),
+            crashX100: s.outcomeX100,
+            targetX100,
+          };
+
+          resolveLiveRound(settled);
+          setRound(settled);
+          setPhase("revealing");
         }
       } catch (err) {
         console.error("placeBet error:", err);
+        if (!config.isMock) clearPendingLiveRound();
         setPhase("idle");
       } finally {
         inFlightRef.current = false;
       }
     },
-    [],
+    [publicClient, writeContractAsync],
   );
 
   const settle = useCallback(() => {
