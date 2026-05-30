@@ -128,10 +128,7 @@ interface IProofBet {
 
     /// @notice Largest stake currently accepted for `gameType`/`params`, capped so
     ///         the worst-case payout stays within the bankroll risk budget.
-    function maxBet(GameType gameType, BetParams calldata params)
-        external
-        view
-        returns (uint256);
+    function maxBet(GameType gameType, BetParams calldata params) external view returns (uint256);
 
     /// @notice A player's current bet nonce (next bet uses this value).
     function nonceOf(address player) external view returns (uint256);

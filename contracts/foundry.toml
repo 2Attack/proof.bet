@@ -1,16 +1,19 @@
 [profile.default]
 src = "src"
 out = "out"
-libs = ["node_modules"]
+libs = ["node_modules", "lib"]
 test = "test"
 script = "script"
 solc = "0.8.24"
 optimizer = true
 optimizer_runs = 200
+via_ir = true
 fs_permissions = [{ access = "read", path = "../packages/shared/src/vectors" }]
 remappings = [
     "@chainlink/contracts/=node_modules/@chainlink/contracts/",
     "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+    "@openzeppelin/contracts@4.9.6/=node_modules/@openzeppelin/contracts/",
+    "forge-std/=lib/forge-std/src/",
 ]
 
 [fmt]
