@@ -611,7 +611,7 @@ input { font-family: inherit; }
 .bankroll-foot .mb .k, .bankroll-foot .lb .k { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); display: block; }
 .bankroll-foot .v { font-family: var(--mono); font-size: 14px; color: var(--ink); margin-top: 3px; }
 
-.balance-strip { display: flex; gap: 10px; align-items: center; margin: 0 auto clamp(16px,2vw,22px); max-width: 1180px; padding: 0 clamp(16px,4vw,48px); }
+.balance-strip { display: flex; gap: 10px; align-items: center; margin: clamp(20px,3vh,32px) auto; max-width: 1180px; padding: 0 clamp(16px,4vw,48px); }
 .game-back { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; color: var(--ink-mut); background: var(--surf-2); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 8px 14px; transition: all .18s var(--ease-out); }
 .game-back:hover { color: var(--ink); border-color: var(--line-3); }
 
