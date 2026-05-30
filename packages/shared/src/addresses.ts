@@ -14,12 +14,10 @@ export interface Deployment {
   proofs: Address;
 }
 
-const ZERO = "0x0000000000000000000000000000000000000000" as const;
-
 export const DEPLOYMENTS: Record<number, Deployment> = {
   [SEPOLIA_CHAIN_ID]: {
-    proofBet: ZERO, // set by script/Deploy.s.sol
-    proofs: ZERO,
+    proofBet: "0xD07b66EE0AC7B73CFD501286F99Cb07238439992",
+    proofs: "0x813693e7986a3779dA4cE7DE260c4BC30128c8B8",
   },
 };
 
