@@ -20,6 +20,8 @@ remappings = [
 line_length = 100
 tab_width = 4
 bracket_spacing = true
+# Frozen seam — do not reformat.
+ignore = ["src/IProofBet.sol"]
 
 [rpc_endpoints]
 sepolia = "${SEPOLIA_RPC_URL}"

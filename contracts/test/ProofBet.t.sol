@@ -51,6 +51,23 @@ contract ReentrantToken {
 }
 
 // ---------------------------------------------------------------------------
+// Test harness exposing internal fulfillRandomWords for direct invocation
+// ---------------------------------------------------------------------------
+
+/// @dev Extends ProofBet to expose fulfillRandomWords as external — allows tests to
+///      call it directly (bypassing the VRF coordinator) and assert the guards work.
+contract ProofBetHarness is ProofBet {
+    constructor(address proofsToken, uint256 subId, address coordinator)
+        ProofBet(proofsToken, subId, coordinator)
+    { }
+
+    /// @notice Directly call fulfillRandomWords — bypasses the coordinator.
+    function exposedFulfill(uint256 requestId, uint256[] calldata randomWords) external {
+        fulfillRandomWords(requestId, randomWords);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Main test contract
 // ---------------------------------------------------------------------------
 
@@ -241,24 +258,124 @@ contract ProofBetTest is Test {
     }
 
     // -----------------------------------------------------------------------
-    // Double-settle blocked
+    // Double-settle blocked (harness bypasses coordinator to test OUR guard)
     // -----------------------------------------------------------------------
 
     function test_DoubleSettleReverts() public {
+        // Deploy harness — shares the same mock coordinator and subscription.
+        vm.startPrank(OWNER);
+        ProofBetHarness harness =
+            new ProofBetHarness(address(_token), _subId, address(_coordinator));
+        vm.stopPrank();
+        _coordinator.addConsumer(_subId, address(harness));
+
+        // Seed harness bankroll.
+        vm.startPrank(OWNER);
+        _token.mint(OWNER, BANKROLL_SEED);
+        _token.approve(address(harness), BANKROLL_SEED);
+        harness.seedBankroll(BANKROLL_SEED);
+        vm.stopPrank();
+
+        // Player deposits into harness.
+        vm.startPrank(PLAYER);
+        _token.approve(address(harness), type(uint256).max);
+        harness.deposit(100e18);
+        vm.stopPrank();
+
         BetParams memory params = BetParams({ target: 200, rows: 0, risk: Risk.Low });
         vm.prank(PLAYER);
-        uint256 requestId = _game.placeBet(GameType.Limbo, STAKE, bytes32("ds_seed"), params);
+        uint256 requestId = harness.placeBet(GameType.Limbo, STAKE, bytes32("ds_seed"), params);
 
         uint256[] memory words = new uint256[](1);
         words[0] = 999;
 
-        // First fulfillment: ok.
-        _coordinator.fulfillRandomWordsWithOverride(requestId, address(_game), words);
+        // First fulfillment via harness: ok.
+        harness.exposedFulfill(requestId, words);
 
-        // Second fulfillment of the same requestId should revert internally
-        // (VRFCoordinator mock checks for double-fulfillment at its level).
-        vm.expectRevert();
-        _coordinator.fulfillRandomWordsWithOverride(requestId, address(_game), words);
+        // Second fulfillment of the SAME requestId must revert with AlreadySettled — OUR guard.
+        vm.expectRevert(
+            abi.encodeWithSelector(bytes4(keccak256("AlreadySettled(uint256)")), requestId)
+        );
+        harness.exposedFulfill(requestId, words);
+    }
+
+    function test_BetNotFoundReverts() public {
+        // Deploy harness.
+        vm.startPrank(OWNER);
+        ProofBetHarness harness =
+            new ProofBetHarness(address(_token), _subId, address(_coordinator));
+        vm.stopPrank();
+        _coordinator.addConsumer(_subId, address(harness));
+
+        uint256[] memory words = new uint256[](1);
+        words[0] = 42;
+
+        // Attempt to fulfill a requestId that was never placed.
+        uint256 unknownId = 999999;
+        vm.expectRevert(
+            abi.encodeWithSelector(bytes4(keccak256("BetNotFound(uint256)")), unknownId)
+        );
+        harness.exposedFulfill(unknownId, words);
+    }
+
+    // -----------------------------------------------------------------------
+    // End-to-end: golden vector proves full callback path produces correct payout
+    // -----------------------------------------------------------------------
+
+    function test_LimboGoldenVector0_EndToEnd() public {
+        // golden.limbo[0]:
+        //   vrfWord    = 8790951480701132859224755765811319828226411200449165407444523148757165036634
+        //   clientSeed = 0x3c4d6dde74e2d6796883c3ebcc27b17be2c8cba4edbf9a4da229d94d02d146f7
+        //   nonce      = 0
+        //   targetX100 = 150
+        //   stake      = 1e18
+        //   outcome    = 843, win = true, payout = 1.5e18
+
+        uint256 vrfWord =
+            8_790_951_480_701_132_859_224_755_765_811_319_828_226_411_200_449_165_407_444_523_148_757_165_036_634;
+        bytes32 clientSeed = 0x3c4d6dde74e2d6796883c3ebcc27b17be2c8cba4edbf9a4da229d94d02d146f7;
+        uint256 targetX100 = 150;
+        uint256 stake = 1e18;
+        uint256 expectedPayout = 1.5e18;
+
+        // Deploy harness and seed.
+        vm.startPrank(OWNER);
+        ProofBetHarness harness =
+            new ProofBetHarness(address(_token), _subId, address(_coordinator));
+        vm.stopPrank();
+        _coordinator.addConsumer(_subId, address(harness));
+
+        vm.startPrank(OWNER);
+        _token.mint(OWNER, BANKROLL_SEED);
+        _token.approve(address(harness), BANKROLL_SEED);
+        harness.seedBankroll(BANKROLL_SEED);
+        vm.stopPrank();
+
+        vm.startPrank(PLAYER);
+        _token.approve(address(harness), type(uint256).max);
+        harness.deposit(10e18);
+        vm.stopPrank();
+
+        // Place bet — player nonce starts at 0 (matches the vector).
+        assertEq(harness.nonceOf(PLAYER), 0, "nonce must be 0 for golden vector to match");
+
+        BetParams memory params = BetParams({ target: targetX100, rows: 0, risk: Risk.Low });
+        vm.prank(PLAYER);
+        uint256 requestId = harness.placeBet(GameType.Limbo, stake, clientSeed, params);
+
+        uint256 inPlayBeforeSettle = harness.inPlayOf(PLAYER);
+
+        // Fulfill with the exact golden vrfWord.
+        uint256[] memory words = new uint256[](1);
+        words[0] = vrfWord;
+        harness.exposedFulfill(requestId, words);
+
+        // Player's balance must have increased by exactly the expected payout.
+        assertEq(
+            harness.inPlayOf(PLAYER),
+            inPlayBeforeSettle + expectedPayout,
+            "golden vector 0 payout must match"
+        );
     }
 
     // -----------------------------------------------------------------------
