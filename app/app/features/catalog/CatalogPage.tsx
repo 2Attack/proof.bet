@@ -170,8 +170,8 @@ function CardInner({ game, featured }: GameCardProps) {
 
 function GameCard({ game, featured = false }: GameCardProps) {
   const ref = useRef<HTMLElement | null>(null);
-  // Pointer tilt only on live, non-featured cards (matches the design).
-  const tiltable = game.live && !featured;
+  // Pointer tilt on every live card — including the featured Plinko card.
+  const tiltable = game.live;
 
   const onMove = (e: ReactPointerEvent<HTMLElement>) => {
     if (!tiltable) return;

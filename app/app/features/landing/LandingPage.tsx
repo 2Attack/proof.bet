@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { Logo } from "../../components/Logo";
 import { LangMenu } from "../../components/TopNav";
 import { ClimbChart } from "../../components/ClimbChart";
@@ -537,6 +538,45 @@ function LandingHero() {
   );
 }
 
+// Live card with the same 3D pointer-tilt + hover sound as the catalog cards.
+interface LiveGameCardProps {
+  href: string;
+  className: string;
+  children: React.ReactNode;
+}
+
+function LiveGameCard({ href, className, children }: LiveGameCardProps) {
+  const ref = useRef<HTMLAnchorElement | null>(null);
+  const onMove = (e: ReactPointerEvent<HTMLAnchorElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    const max = 5;
+    el.style.transform = `perspective(820px) translateY(-4px) rotateX(${(-py * max).toFixed(2)}deg) rotateY(${(px * max).toFixed(2)}deg)`;
+  };
+  const onLeave = () => {
+    const el = ref.current;
+    if (el) el.style.transform = "";
+  };
+  return (
+    <Link
+      href={href}
+      className={className}
+      ref={ref}
+      onPointerMove={onMove}
+      onPointerLeave={onLeave}
+      onPointerEnter={() => getSound().ui()}
+      onClick={() => getSound().ui()}
+      style={{ textDecoration: "none" }}
+    >
+      {children}
+    </Link>
+  );
+}
+
 function GamesSection() {
   return (
     <section className="landing-games">
@@ -545,7 +585,7 @@ function GamesSection() {
         <span className="kicker">all provably fair · the library grows</span>
       </div>
       <div className="lg-grid">
-        <Link href="/games/plinko" className="game-card featured" style={{ textDecoration: "none" }}>
+        <LiveGameCard href="/games/plinko" className="game-card featured">
           <div className="gc-visual">
             <ArtPlinko />
             <div className="gc-badges">
@@ -566,8 +606,8 @@ function GamesSection() {
               <span className="gc-play">Play →</span>
             </div>
           </div>
-        </Link>
-        <Link href="/games/limbo" className="game-card" style={{ textDecoration: "none" }}>
+        </LiveGameCard>
+        <LiveGameCard href="/games/limbo" className="game-card">
           <div className="gc-visual">
             <ArtLimbo />
             <div className="gc-badges">
@@ -587,7 +627,7 @@ function GamesSection() {
               <span className="gc-play">Play →</span>
             </div>
           </div>
-        </Link>
+        </LiveGameCard>
         {SOON_GAMES.map((g) => {
           const Art = g.art;
           return (

@@ -7,6 +7,7 @@ import { TopNav } from "../../components/TopNav";
 import { Btn } from "../../components/Btn";
 import { ClimbChart } from "../../components/ClimbChart";
 import { PendingToast } from "../../components/PendingToast";
+import { BankrollMeter } from "../../components/BankrollMeter";
 import { useApp } from "../../lib/app-context";
 import { usePlaceBet } from "./hooks";
 import { useClimb } from "../../lib/spring";
@@ -98,39 +99,6 @@ function SoundToggle() {
   );
 }
 
-function BankrollMeter({
-  bankroll,
-  maxBet,
-}: {
-  bankroll: bigint;
-  maxBet: bigint;
-}) {
-  const pct = Math.min(100, (Number(bankroll / FP) / 50000) * 100);
-  return (
-    <div className="bankroll">
-      <div className="bankroll-head">
-        <span className="kicker">House bankroll · live</span>
-        <span className="chip" style={{ padding: "3px 9px" }}>
-          <span className="chip-dot" />
-          solvent
-        </span>
-      </div>
-      <div className="bankroll-bar">
-        <i style={{ width: `${pct}%` }} />
-      </div>
-      <div className="bankroll-foot">
-        <span className="lb">
-          <span className="k">Bankroll</span>
-          <span className="v mono">{fmtPRF(bankroll)} PRF</span>
-        </span>
-        <span className="mb">
-          <span className="k">Max bet (this target)</span>
-          <span className="v mono acc">{fmtPRF(maxBet)} PRF</span>
-        </span>
-      </div>
-    </div>
-  );
-}
 
 
 // ---------- the result stage (money-shot) ----------
@@ -405,11 +373,6 @@ export function LimboPage() {
           ‹ Games
         </Link>
         <div className="inplay-bar">
-          {inPlay > 0n && (
-            <span className="ip-wallet">
-              Wallet <b>{fmtPRF(inPlay)}</b>
-            </span>
-          )}
           <span className="ip-pill">
             <span className="chip-token" />
             In play <b>{fmtPRF(inPlay)}</b>
@@ -456,7 +419,7 @@ export function LimboPage() {
             </div>
           )}
 
-          <BankrollMeter bankroll={bankroll} maxBet={maxBet} />
+          <BankrollMeter bankroll={bankroll} maxBet={maxBet} stake={stakeN} />
         </div>
 
         {/* Bet panel */}

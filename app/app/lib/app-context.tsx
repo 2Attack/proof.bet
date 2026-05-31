@@ -41,6 +41,7 @@ import {
 import { proofBetContract, proofsContract } from "./contracts";
 import { weiToFp } from "./units";
 import { config } from "./config";
+import plinkoTables from "./plinko-tables";
 
 export interface AppContextValue {
   isMock: boolean;
@@ -54,6 +55,7 @@ export interface AppContextValue {
   pendingRound: MockRound | null;
   // Derived
   maxBetLimbo: (targetX100: bigint) => bigint;
+  maxBetPlinko: (rows: number, risk: number) => bigint;
   // Verify
   verifyRound: MockRound | null;
   setVerifyRound: (r: MockRound | null) => void;
@@ -61,10 +63,34 @@ export interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-/** Limbo cap: worst-case profit ≤ 1.5% of bankroll, in ×100 fixed-point. */
+/**
+ * Shared max-bet cap (mirrors ProofBet.maxBet): worst-case profit ≤ 1.5% of
+ * bankroll. `worstMultX100` is the worst-case multiplier for the house — the
+ * Limbo target, or Plinko's top bucket. Result in ×100 fixed-point.
+ */
+function maxBetCapFp(bankrollFp: bigint, worstMultX100: bigint): bigint {
+  if (worstMultX100 <= 100n) return bankrollFp;
+  return (bankrollFp * 15n) / ((worstMultX100 - 100n) * 10n);
+}
+
 function maxBetLimboFp(bankrollFp: bigint, targetX100: bigint): bigint {
-  if (targetX100 <= 100n) return bankrollFp;
-  return (bankrollFp * 15n) / ((targetX100 - 100n) * 10n);
+  return maxBetCapFp(bankrollFp, targetX100);
+}
+
+const PLINKO_RISK_KEYS = ["low", "medium", "high"] as const;
+
+/** Highest multiplier (×100) for a Plinko rows/risk — the house's worst case. */
+function plinkoMaxMultX100(rows: number, risk: number): bigint {
+  const riskKey = PLINKO_RISK_KEYS[risk] ?? "medium";
+  const row = (plinkoTables as Record<string, Record<string, number[]>>)[
+    String(rows)
+  ]?.[riskKey];
+  if (!row || row.length === 0) return 0n;
+  return BigInt(Math.max(...row));
+}
+
+function maxBetPlinkoFp(bankrollFp: bigint, rows: number, risk: number): bigint {
+  return maxBetCapFp(bankrollFp, plinkoMaxMultX100(rows, risk));
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -91,6 +117,10 @@ function MockAppProvider({ children }: { children: ReactNode }) {
     (targetX100: bigint) => maxBetLimboFp(snap.bankroll, targetX100),
     [snap.bankroll],
   );
+  const maxBetPlinko = useCallback(
+    (rows: number, risk: number) => maxBetPlinkoFp(snap.bankroll, rows, risk),
+    [snap.bankroll],
+  );
 
   const value: AppContextValue = {
     isMock: true,
@@ -103,6 +133,7 @@ function MockAppProvider({ children }: { children: ReactNode }) {
     rounds: snap.rounds,
     pendingRound: snap.pendingRound,
     maxBetLimbo,
+    maxBetPlinko,
     verifyRound,
     setVerifyRound,
   };
@@ -169,6 +200,10 @@ function LiveAppProvider({ children }: { children: ReactNode }) {
     (targetX100: bigint) => maxBetLimboFp(bankrollFp, targetX100),
     [bankrollFp],
   );
+  const maxBetPlinko = useCallback(
+    (rows: number, risk: number) => maxBetPlinkoFp(bankrollFp, rows, risk),
+    [bankrollFp],
+  );
 
   const value: AppContextValue = {
     isMock: false,
@@ -181,6 +216,7 @@ function LiveAppProvider({ children }: { children: ReactNode }) {
     rounds: roundsSnap.rounds,
     pendingRound: roundsSnap.pendingRound,
     maxBetLimbo,
+    maxBetPlinko,
     verifyRound,
     setVerifyRound,
   };

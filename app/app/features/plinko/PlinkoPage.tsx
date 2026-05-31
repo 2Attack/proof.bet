@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { TopNav } from "../../components/TopNav";
 import { Btn } from "../../components/Btn";
 import { PendingToast } from "../../components/PendingToast";
+import { BankrollMeter } from "../../components/BankrollMeter";
 import { useApp } from "../../lib/app-context";
 import { usePlinkoBet } from "./hooks";
 import { randHex } from "../../lib/mock-utils";
@@ -232,7 +233,7 @@ function PlinkoBoard({ rows, ball }: { rows: number; ball: BallState | null }) {
 
 export function PlinkoPage() {
   const router = useRouter();
-  const { inPlay, nonce, setVerifyRound } = useApp();
+  const { inPlay, bankroll, nonce, setVerifyRound, maxBetPlinko } = useApp();
   const { phase, stage, round, placeBet, settle, reset } = usePlinkoBet();
   const [risk, setRisk] = useState<Risk>(Risk.Medium);
   const [rows, setRows] = useState(12);
@@ -247,15 +248,21 @@ export function PlinkoPage() {
   const maxMult = useMemo(() => Math.max(...mults), [mults]);
 
   const stakeN = BigInt(Math.round(stake * 100));
+  const maxBet = useMemo(
+    () => maxBetPlinko(rows, risk),
+    [maxBetPlinko, rows, risk],
+  );
   const busy = phase === "pending" || phase === "dropping";
   const overBalance = stakeN > inPlay;
-  const canBet = !busy && !overBalance && stakeN > 0n;
+  const overMax = stakeN > maxBet;
+  const canBet = !busy && !overBalance && !overMax && stakeN > 0n;
 
   let cta = "Drop Ball";
   if (phase === "pending") cta = "Resolving…";
   else if (phase === "dropping") cta = "Dropping…";
   else if (stakeN <= 0n) cta = "Enter a stake";
   else if (overBalance) cta = "Insufficient balance";
+  else if (overMax) cta = "Above max bet";
 
   const onDrop = () => {
     if (!canBet) return;
@@ -418,6 +425,13 @@ export function PlinkoPage() {
               </Btn>
             </div>
           )}
+
+          <BankrollMeter
+            bankroll={bankroll}
+            maxBet={maxBet}
+            stake={stakeN}
+            maxBetCaption={`${rows} rows · ${riskKey}`}
+          />
         </div>
 
         {/* Controls */}
@@ -490,7 +504,12 @@ export function PlinkoPage() {
               </button>
               <button
                 disabled={busy}
-                onClick={() => setStake(Math.round((Number(inPlay) / 100) * 100) / 100)}
+                onClick={() =>
+                  setStake(
+                    Math.round((Number(maxBet < inPlay ? maxBet : inPlay) / 100) * 100) /
+                      100,
+                  )
+                }
               >
                 max
               </button>
