@@ -15,11 +15,19 @@ import type { MockRound } from "./mock-store";
 interface LiveRoundsState {
   rounds: MockRound[];
   pendingRound: MockRound | null;
+  /**
+   * A round recovered + settled after a reload, handed to the active game hook
+   * so the table can replay its reveal (the reveal is driven by hook-local state,
+   * which recovery can't reach directly). One-shot: the hook consumes and clears
+   * it via `consumeRecoveredResult`.
+   */
+  recoveredResult: MockRound | null;
 }
 
 const state: LiveRoundsState = {
   rounds: [],
   pendingRound: null,
+  recoveredResult: null,
 };
 
 type Listener = () => void;
@@ -54,5 +62,23 @@ export function resolveLiveRound(settled: MockRound): void {
 /** Drop the pending round without recording it (e.g. on placeBet failure). */
 export function clearPendingLiveRound(): void {
   state.pendingRound = null;
+  notify();
+}
+
+/**
+ * Resolve a chain-recovered pending round: record it to history, clear the
+ * pending slot, and flag it for the active game hook to replay — all in one
+ * atomic update so the pending→reveal handoff never flickers the bet button.
+ */
+export function resolveRecoveredRound(settled: MockRound): void {
+  state.pendingRound = null;
+  state.rounds = [settled, ...state.rounds].slice(0, 50);
+  state.recoveredResult = settled;
+  notify();
+}
+
+/** Clear the recovered-result flag once a game hook has adopted it. */
+export function consumeRecoveredResult(): void {
+  state.recoveredResult = null;
   notify();
 }

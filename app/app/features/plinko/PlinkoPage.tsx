@@ -8,6 +8,7 @@ import { Btn } from "../../components/Btn";
 import { PendingToast } from "../../components/PendingToast";
 import { BankrollMeter } from "../../components/BankrollMeter";
 import { useApp } from "../../lib/app-context";
+import { useBetErrorAction } from "../../lib/use-bet-error-action";
 import { usePlinkoBet } from "./hooks";
 import { randHex } from "../../lib/mock-utils";
 import { getSound } from "../../lib/sound";
@@ -233,8 +234,11 @@ function PlinkoBoard({ rows, ball }: { rows: number; ball: BallState | null }) {
 
 export function PlinkoPage() {
   const router = useRouter();
-  const { inPlay, bankroll, nonce, setVerifyRound, maxBetPlinko } = useApp();
-  const { phase, stage, round, placeBet, settle, reset } = usePlinkoBet();
+  const { inPlay, bankroll, nonce, setVerifyRound, maxBetPlinko, pendingRound } =
+    useApp();
+  const { phase, stage, round, error, placeBet, settle, reset } =
+    usePlinkoBet();
+  const onErrorAction = useBetErrorAction(reset);
   const [risk, setRisk] = useState<Risk>(Risk.Medium);
   const [rows, setRows] = useState(12);
   const [stake, setStake] = useState(25);
@@ -247,12 +251,28 @@ export function PlinkoPage() {
   const edge = useMemo(() => getEdge(rows, risk), [rows, risk]);
   const maxMult = useMemo(() => Math.max(...mults), [mults]);
 
+  // The board, slots and ball-drop must match the ROUND being revealed, not the
+  // live sliders: the player can change rows/risk during the on-chain wait, and a
+  // chain-recovered round (after a reload) has no relation to the sliders at all.
+  // Fall back to the sliders only when there's no active round.
+  const displayRows = round ? round.rows : rows;
+  const displayRisk: Risk = round ? round.risk : risk;
+  const displayRiskKey = (["low", "medium", "high"] as const)[displayRisk];
+  const displayMults = useMemo(
+    () => getMults(displayRows, displayRisk),
+    [displayRows, displayRisk],
+  );
+
   const stakeN = BigInt(Math.round(stake * 100));
   const maxBet = useMemo(
     () => maxBetPlinko(rows, risk),
     [maxBetPlinko, rows, risk],
   );
-  const busy = phase === "pending" || phase === "dropping";
+  // A pending round recovered from the chain after a reload has no local phase,
+  // so gate on the shared store too — otherwise the button would re-enable and
+  // the player could bet again while the first round is still settling.
+  const recovered = phase === "idle" && pendingRound != null;
+  const busy = phase === "pending" || phase === "dropping" || recovered;
   const overBalance = stakeN > inPlay;
   const overMax = stakeN > maxBet;
   const canBet = !busy && !overBalance && !overMax && stakeN > 0n;
@@ -309,7 +329,7 @@ export function PlinkoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, round?.txHash]);
 
-  const ball = usePlinkoDrop(round?.path, rows, phase === "dropping", round?.txHash, onDone);
+  const ball = usePlinkoDrop(round?.path, displayRows, phase === "dropping", round?.txHash, onDone);
 
   useEffect(() => {
     if (phase === "settled" && round) {
@@ -353,26 +373,26 @@ export function PlinkoPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="stage plinko-stage">
             <div className="stage-eyebrow eyebrow">
-              Plinko · {RISK_LABELS[riskKey]} · {rows} rows
+              Plinko · {RISK_LABELS[displayRiskKey]} · {displayRows} rows
             </div>
             <SoundToggle />
 
-            <PlinkoBoard rows={rows} ball={ball} />
+            <PlinkoBoard rows={displayRows} ball={ball} />
 
             <div
               className="plinko-slots"
               style={
                 {
-                  "--slot-fz": `${mults.length >= 15 ? 10.5 : mults.length >= 13 ? 11.5 : 13}px`,
+                  "--slot-fz": `${displayMults.length >= 15 ? 10.5 : displayMults.length >= 13 ? 11.5 : 13}px`,
                 } as React.CSSProperties
               }
             >
-              {mults.map((m, s) => (
+              {displayMults.map((m, s) => (
                 <div
                   key={s}
                   className={`pk-slot ${slotTier(m)}${s === landedSlot ? " land" : ""}`}
                 >
-                  {fmtSlot(m, mults.length)}
+                  {fmtSlot(m, displayMults.length)}
                   <span className="pk-slot-x">×</span>
                 </div>
               ))}
@@ -391,7 +411,7 @@ export function PlinkoPage() {
               )}
               {phase === "dropping" && (
                 <span className="climb-live">
-                  <span className="climb-pulse" />dropping through {rows} rows…
+                  <span className="climb-pulse" />dropping through {displayRows} rows…
                 </span>
               )}
               {phase === "settled" && round && (
@@ -539,7 +559,13 @@ export function PlinkoPage() {
       </div>
 
       {/* Toast mirrors the real bet stage; the hook drives pending→dropping. */}
-      {phase === "pending" && <PendingToast stage={stage} />}
+      {(phase === "pending" || phase === "error" || recovered) && (
+        <PendingToast
+          stage={recovered ? "vrf" : stage}
+          error={error}
+          onAction={onErrorAction}
+        />
+      )}
     </div>
   );
 }

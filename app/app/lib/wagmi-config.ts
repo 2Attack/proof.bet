@@ -37,6 +37,6 @@ export const wagmiConfig = createConfig({
   // the aggressive 4s default — together these sharply cut requests/min and keep
   // the free Infura tier under its limit.
   batch: { multicall: true },
-  pollingInterval: 3_000,
+  pollingInterval: 5_000,
   ssr: true,
 });

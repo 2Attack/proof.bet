@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { Logo } from "../../components/Logo";
-import { LangMenu } from "../../components/TopNav";
 import { ClimbChart } from "../../components/ClimbChart";
 import { useSpringValue, useClimb } from "../../lib/spring";
 import { getSound } from "../../lib/sound";
@@ -913,7 +912,6 @@ export function LandingPage() {
         <div className="landing-topbar-inner">
           <Logo size="header" />
           <nav className="landing-topnav">
-            <LangMenu />
             <Link
               href="/connect"
               className="btn btn-accent"

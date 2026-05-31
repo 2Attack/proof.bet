@@ -49,6 +49,11 @@ export function LangMenu() {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, right: 0 });
   const pillRef = useRef<HTMLButtonElement>(null);
+  // The dropdown is portaled to <body>, so it is NOT a descendant of pillRef.
+  // Without this ref the document mousedown handler below would treat clicks on
+  // the menu items as "outside" and close the menu before the click lands —
+  // unmounting the button so its onClick never fires.
+  const ddRef = useRef<HTMLDivElement>(null);
 
   const place = () => {
     const el = pillRef.current;
@@ -63,7 +68,9 @@ export function LangMenu() {
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!pillRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (!pillRef.current?.contains(t) && !ddRef.current?.contains(t))
+        setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -116,6 +123,7 @@ export function LangMenu() {
       </button>
       {open && createPortal(
         <div
+          ref={ddRef}
           className="acct-dropdown lang-dropdown"
           role="menu"
           style={{ top: pos.top, right: pos.right, position: "fixed", zIndex: 80 }}
@@ -157,6 +165,9 @@ function WalletMenu() {
   const [copied, setCopied] = useState(false);
   const [pos, setPos] = useState({ top: 0, right: 0 });
   const pillRef = useRef<HTMLButtonElement>(null);
+  // Portaled to <body> — see ddRef note in LangMenu. Clicks on Deposit/Withdraw
+  // must not be swallowed by the outside-click handler.
+  const ddRef = useRef<HTMLDivElement>(null);
 
   const place = () => {
     const el = pillRef.current;
@@ -168,7 +179,9 @@ function WalletMenu() {
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!pillRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (!pillRef.current?.contains(t) && !ddRef.current?.contains(t))
+        setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
     const onScroll = () => place();
@@ -229,6 +242,7 @@ function WalletMenu() {
       </button>
       {open && createPortal(
         <div
+          ref={ddRef}
           className="acct-dropdown wallet-dropdown"
           role="menu"
           style={{ top: pos.top, right: pos.right, position: "fixed", zIndex: 80 }}
@@ -264,7 +278,11 @@ function WalletMenu() {
               </div>
             </div>
             <div className="chips-acts">
-              <button className="chips-act" onClick={() => act(() => router.push("/deposit"))}>Deposit</button>
+              {walletPRF > 0n ? (
+                <button className="chips-act" onClick={() => act(() => router.push("/deposit"))}>Deposit</button>
+              ) : (
+                <button className="chips-act" onClick={() => act(() => router.push("/faucet"))}>Faucet</button>
+              )}
               <button
                 className="chips-act primary"
                 disabled={inPlay <= 0n}
@@ -296,12 +314,31 @@ function WalletMenu() {
   );
 }
 
+function ConnectingPill() {
+  // Header-shaped placeholder shown while wagmi restores the session, so the
+  // right cluster doesn't flash between "Connect & play" and the account pill
+  // on load. Reuses the reduced-motion-aware spinner.
+  return (
+    <span
+      className="glass-pill hp-connecting"
+      role="status"
+      aria-live="polite"
+      aria-label="Checking wallet"
+    >
+      <i className="hp-spin" aria-hidden="true" />
+      <span className="mono" style={{ fontSize: 12 }}>
+        Connecting…
+      </span>
+    </span>
+  );
+}
+
 interface TopNavProps {
   active?: "games" | "verify" | "states";
 }
 
 export function TopNav(_props: TopNavProps) {
-  const { address, verifyRound } = useApp();
+  const { address, verifyRound, resolving } = useApp();
   const pathname = usePathname();
 
   const isGames = pathname?.startsWith("/games") || pathname === "/games";
@@ -346,23 +383,18 @@ export function TopNav(_props: TopNavProps) {
             Verify ↗
           </Link>
         )}
-        {address && (
-          <>
-            <WalletMenu />
-            <LangMenu />
-          </>
-        )}
-        {!address && (
-          <>
-            <LangMenu />
-            <Link
-              href="/connect"
-              className="btn btn-accent"
-              style={{ textDecoration: "none", padding: "10px 18px", fontSize: 12 }}
-            >
-              Connect & play
-            </Link>
-          </>
+        {resolving ? (
+          <ConnectingPill />
+        ) : address ? (
+          <WalletMenu />
+        ) : (
+          <Link
+            href="/connect"
+            className="btn btn-accent"
+            style={{ textDecoration: "none", padding: "10px 18px", fontSize: 12 }}
+          >
+            Connect & play
+          </Link>
         )}
       </nav>
     </header>

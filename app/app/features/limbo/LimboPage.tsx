@@ -9,6 +9,7 @@ import { ClimbChart } from "../../components/ClimbChart";
 import { PendingToast } from "../../components/PendingToast";
 import { BankrollMeter } from "../../components/BankrollMeter";
 import { useApp } from "../../lib/app-context";
+import { useBetErrorAction } from "../../lib/use-bet-error-action";
 import { usePlaceBet } from "./hooks";
 import { useClimb } from "../../lib/spring";
 import { getSound } from "../../lib/sound";
@@ -308,8 +309,11 @@ function TargetSlider({
 
 export function LimboPage() {
   const router = useRouter();
-  const { inPlay, bankroll, nonce, setVerifyRound, maxBetLimbo } = useApp();
-  const { phase, stage, round, placeBet, settle, reset } = usePlaceBet();
+  const { inPlay, bankroll, nonce, setVerifyRound, maxBetLimbo, pendingRound } =
+    useApp();
+  const { phase, stage, round, error, placeBet, settle, reset } =
+    usePlaceBet();
+  const onErrorAction = useBetErrorAction(reset);
   const [target, setTarget] = useState(2.0);
   const [stake, setStake] = useState(25);
   const [clientSeed] = useState<Hex>(() => randHex(32) as Hex);
@@ -323,7 +327,11 @@ export function LimboPage() {
   const winChance = Math.min(99.9, ((1 - HOUSE_EDGE) / target) * 100);
   const payout = stake * target;
 
-  const busy = phase === "pending" || phase === "revealing";
+  // A pending round recovered from the chain after a reload has no local phase,
+  // so gate on the shared store too — otherwise the button would re-enable and
+  // the player could bet again while the first round is still settling.
+  const recovered = phase === "idle" && pendingRound != null;
+  const busy = phase === "pending" || phase === "revealing" || recovered;
   const overBalance = stakeN > inPlay;
   const overMax = stakeN > maxBet;
   const canBet = !busy && !overBalance && !overMax && stakeN > 0n;
@@ -501,7 +509,13 @@ export function LimboPage() {
         </div>
       </div>
 
-      {phase === "pending" && <PendingToast stage={stage} />}
+      {(phase === "pending" || phase === "error" || recovered) && (
+        <PendingToast
+          stage={recovered ? "vrf" : stage}
+          error={error}
+          onAction={onErrorAction}
+        />
+      )}
     </div>
   );
 }

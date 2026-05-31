@@ -36,16 +36,25 @@ import { ProofBet } from "../src/ProofBet.sol";
 ///     --constructor-args $(cast abi-encode "constructor(address,uint256,address)" \
 ///       $PROOFS_ADDRESS $VRF_SUBSCRIPTION_ID $VRF_COORDINATOR)
 ///
-///   # Verify on Sourcify (REQUIRED for wallets to decode method names).
-///   # MetaMask reads Sourcify, NOT Etherscan: without this, custom calls like
-///   # placeBet show as "Contract Interaction" (faucet/deposit/withdraw still
-///   # resolve via the public 4byte registry). Standard ERC20s are unaffected.
+///   # ----- Wallet method-name display ("placeBet" vs "Contract Interaction") -----
+///   # Per MetaMask docs, the confirmation-screen method NAME comes ONLY from the
+///   # 4byte registry (https://www.4byte.directory) — NOT from Etherscan/Sourcify
+///   # ABIs. faucet/deposit/withdraw resolve because their selectors are common
+///   # and already in 4byte; placeBet's custom selector must be submitted once.
+///   # The import-solidity API can't parse tuple/struct params, so POST the raw
+///   # canonical signature instead (enums -> uint8, struct -> tuple):
+///   #   curl -X POST https://www.4byte.directory/api/v1/signatures/ \
+///   #     -H 'Content-Type: application/json' \
+///   #     -d '{"text_signature":"placeBet(uint8,uint256,bytes32,(uint256,uint8,uint8))"}'
+///   #   # -> hex_signature 0x152e1f3a (submitted; indexing lag before it resolves)
 ///   #
-///   # Gotcha: forge forces the Etherscan verifier whenever ETHERSCAN_API_KEY
-///   # resolves (incl. via the [etherscan] table in foundry.toml + .env), which
-///   # makes --verifier sourcify a no-op. Temporarily strip the [rpc_endpoints]/
-///   # [etherscan] tail from foundry.toml and hide .env (the [profile.default]
-///   # build settings must stay intact so the bytecode matches), then restore:
+///   # # Verify on Sourcify (OPTIONAL — does NOT affect the method name above;
+///   # # only clients reading Sourcify, e.g. the Sourcify MetaMask Snap, use it for
+///   # # richer param decoding). Gotcha: forge forces the Etherscan verifier while
+///   # # ETHERSCAN_API_KEY resolves (via the [etherscan] table in foundry.toml +
+///   # # .env), making --verifier sourcify a no-op. Strip the [rpc_endpoints]/
+///   # # [etherscan] tail from foundry.toml and hide .env (keep [profile.default]
+///   # # so the bytecode matches), then restore:
 ///   #   cp foundry.toml foundry.toml.bak
 ///   #   awk '/^\[rpc_endpoints\]/{exit} {print}' foundry.toml.bak > foundry.toml
 ///   #   mv .env .env.tmp; unset ETHERSCAN_API_KEY
@@ -54,8 +63,7 @@ import { ProofBet } from "../src/ProofBet.sol";
 ///   #     --constructor-args $(cast abi-encode "constructor(address,uint256,address)" \
 ///   #       $PROOFS_ADDRESS $VRF_SUBSCRIPTION_ID $VRF_COORDINATOR)
 ///   #   mv foundry.toml.bak foundry.toml; mv .env.tmp .env   # always restore
-///   # Check status: curl https://sourcify.dev/server/v2/verify/<JOB_ID>
-///   # (ProofBet 0xD07b…9992 verified on Sourcify — exact_match.)
+///   #   # (ProofBet 0xD07b…9992 already on Sourcify — exact_match.)
 contract DeployScript is Script {
     /// @dev Amount of PRF to seed the bankroll: 1,000,000 PRF.
     uint256 private constant BANKROLL_SEED = 1_000_000e18;

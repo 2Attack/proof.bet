@@ -6,7 +6,7 @@
  * In live mode: calls placeBet on the contract, watches BetSettled.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { Hex } from "viem";
 import { usePublicClient, useWriteContract } from "wagmi";
 import { GameType, type BetParams } from "@proofbet/shared/types";
@@ -20,8 +20,12 @@ import {
   setPendingLiveRound,
   resolveLiveRound,
   clearPendingLiveRound,
+  getLiveRounds,
+  subscribeLiveRounds,
+  consumeRecoveredResult,
 } from "../../lib/rounds-store";
 import { placeBetLive, type BetStage } from "../../lib/live-bet";
+import { classifyBetError, type BetErrorInfo } from "../../lib/bet-errors";
 import { fpToWei, weiToFp } from "../../lib/units";
 import { randHex, fakeVRFLatency } from "../../lib/mock-utils";
 import { config } from "../../lib/config";
@@ -29,7 +33,15 @@ import { config } from "../../lib/config";
 const ZERO_SEED =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as Hex;
 
-export type BetPhase = "idle" | "pending" | "revealing" | "settled";
+/** How long the terminal toast lingers before auto-dismiss. A bare rejection
+ *  clears fast; an actionable, fixable error (gas, network, cap) stays up long
+ *  enough to act on before it fades. */
+const ERROR_LINGER_MS = 3_000;
+const ERROR_LINGER_PERSIST_MS = 12_000;
+
+export type BetPhase = "idle" | "pending" | "error" | "revealing" | "settled";
+
+export type BetError = BetErrorInfo;
 
 export interface LimboRound extends MockRound {
   crashX100: bigint;
@@ -40,9 +52,38 @@ export function usePlaceBet() {
   const [phase, setPhase] = useState<BetPhase>("idle");
   const [stage, setStage] = useState<BetStage>("signing");
   const [round, setRound] = useState<LimboRound | null>(null);
+  const [error, setError] = useState<BetError | null>(null);
   const inFlightRef = useRef(false);
+  const dismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
+
+  // Mirror `phase` into a ref so the store subscription below reads the live
+  // value without re-subscribing every render.
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+
+  // Adopt a chain-recovered settled round (after a reload) and replay its reveal,
+  // identical to a live bet — recovery records balances/history but can't drive
+  // this hook's reveal directly. Display-only: we set round + phase; the round was
+  // already recorded by `resolveRecoveredRound`. rounds-store is live-only, so in
+  // mock mode `recoveredResult` stays null and this never fires.
+  useEffect(() => {
+    const tryAdopt = () => {
+      const rec = getLiveRounds().recoveredResult;
+      if (!rec || rec.game !== GameType.Limbo) return;
+      if (inFlightRef.current || phaseRef.current !== "idle") return;
+      consumeRecoveredResult();
+      setRound({
+        ...rec,
+        crashX100: rec.outcomeX100,
+        targetX100: rec.params.target,
+      });
+      setPhase("revealing");
+    };
+    tryAdopt();
+    return subscribeLiveRounds(tryAdopt);
+  }, []);
 
   const placeBet = useCallback(
     async (
@@ -53,6 +94,11 @@ export function usePlaceBet() {
     ) => {
       if (inFlightRef.current) return;
       inFlightRef.current = true;
+      // A new bet cancels any lingering error toast from the previous one —
+      // clearing the timer here is what stops a stale dismiss from stomping
+      // this fresh pending toast (the auto-dismiss race).
+      if (dismissRef.current) clearTimeout(dismissRef.current);
+      setError(null);
       // Reset stage every bet so round 2's toast never opens on round 1's
       // leftover stage. Live confirms "signing" immediately; mock jumps to
       // "confirming" (no wallet prompt).
@@ -189,9 +235,24 @@ export function usePlaceBet() {
           setPhase("revealing");
         }
       } catch (err) {
-        console.error("placeBet error:", err);
+        // A declined wallet prompt is an expected choice, not a bug — log it
+        // quietly. Everything else (RPC down, revert, settlement timeout) is a
+        // real failure and keeps the loud console.error so it isn't hidden.
+        const info = classifyBetError(err);
+        if (info.cancelled) {
+          console.info("Limbo bet cancelled by user");
+        } else {
+          console.error("placeBet error:", err);
+        }
         if (!config.isMock) clearPendingLiveRound();
-        setPhase("idle");
+        setError(info);
+        setPhase("error");
+        // Linger, then return to idle. The functional guard makes the timer a
+        // no-op if a new bet (or a recovery action) has already left "error".
+        dismissRef.current = setTimeout(() => {
+          setPhase((p) => (p === "error" ? "idle" : p));
+          setError(null);
+        }, info.persist ? ERROR_LINGER_PERSIST_MS : ERROR_LINGER_MS);
       } finally {
         inFlightRef.current = false;
       }
@@ -204,9 +265,11 @@ export function usePlaceBet() {
   }, []);
 
   const reset = useCallback(() => {
+    if (dismissRef.current) clearTimeout(dismissRef.current);
     setPhase("idle");
     setRound(null);
+    setError(null);
   }, []);
 
-  return { phase, stage, round, placeBet, settle, reset };
+  return { phase, stage, round, error, placeBet, settle, reset };
 }

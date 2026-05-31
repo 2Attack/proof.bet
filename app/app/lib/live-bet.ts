@@ -108,16 +108,23 @@ async function waitForSettled(
 ): Promise<SettledArgs> {
   const deadline = Date.now() + SETTLE_TIMEOUT_MS;
   for (;;) {
-    const events = await publicClient.getContractEvents({
-      address: proofBetContract.address,
-      abi: iProofBetAbi,
-      eventName: "BetSettled",
-      args: { requestId },
-      fromBlock,
-      toBlock: "latest",
-    });
-    const hit = events[0];
-    if (hit) return hit.args as unknown as SettledArgs;
+    try {
+      const events = await publicClient.getContractEvents({
+        address: proofBetContract.address,
+        abi: iProofBetAbi,
+        eventName: "BetSettled",
+        args: { requestId },
+        fromBlock,
+        toBlock: "latest",
+      });
+      const hit = events[0];
+      if (hit) return hit.args as unknown as SettledArgs;
+    } catch (err) {
+      // Transient RPC hiccup — e.g. a batched eth_getLogs sub-response comes back
+      // without a result (the transport runs `batch: true`), or a rate-limit. The
+      // round isn't lost; just keep polling until the deadline rather than aborting.
+      console.warn("waitForSettled: transient read error, retrying", err);
+    }
     if (Date.now() > deadline) {
       throw new Error("Timed out waiting for VRF settlement (BetSettled)");
     }
@@ -225,26 +232,76 @@ export async function loadRoundByTxHash(
   if (!placed) return null;
   const p = placed.args as unknown as PlacedArgs;
 
-  const settled = await waitForSettled(publicClient, p.requestId, receipt.blockNumber);
-
-  const game: GameType =
-    p.gameType === GameType.Plinko ? GameType.Plinko : GameType.Limbo;
-  const params: BetParams = {
-    target: p.params.target,
-    rows: p.params.rows,
-    risk: p.params.risk as Risk,
-  };
-  const s = settleRound(game, settled.vrfWord, p.clientSeed, p.nonce, params, p.stake);
-
-  return {
-    requestId: String(p.requestId),
+  return resolveSettledRound(publicClient, {
+    requestId: p.requestId,
     txHash,
-    vrfWord: settled.vrfWord,
     clientSeed: p.clientSeed,
     nonce: p.nonce,
+    gameType: p.gameType,
+    stake: p.stake,
+    params: p.params,
+    fromBlock: receipt.blockNumber,
+  });
+}
+
+/** The inputs of a placed (but not-yet-settled) bet — everything needed to wait
+ *  for its BetSettled and reconstruct the full round. Sourced from a BetPlaced
+ *  log (its block as `fromBlock`), so `stake` is the EXACT on-chain wei. */
+export interface PlacedRoundInputs {
+  requestId: bigint;
+  txHash: Hex;
+  clientSeed: Hex;
+  nonce: bigint;
+  gameType: number;
+  stake: bigint;
+  params: { target: bigint; rows: number; risk: number };
+  fromBlock: bigint;
+}
+
+/**
+ * Wait for a placed bet to settle, then assemble the full round via the shared
+ * fairness engine. Shared by the cold-load `/verify/[txHash]` path and post-reload
+ * pending recovery, so both reconstruct rounds identically.
+ */
+export async function resolveSettledRound(
+  publicClient: PublicClient,
+  input: PlacedRoundInputs,
+): Promise<MockRound> {
+  const settled = await waitForSettled(
+    publicClient,
+    input.requestId,
+    input.fromBlock,
+  );
+
+  const game: GameType =
+    input.gameType === GameType.Plinko ? GameType.Plinko : GameType.Limbo;
+  const params: BetParams = {
+    target: input.params.target,
+    rows: input.params.rows,
+    risk: input.params.risk as Risk,
+  };
+  const s = settleRound(
+    game,
+    settled.vrfWord,
+    input.clientSeed,
+    input.nonce,
+    params,
+    input.stake,
+  );
+
+  return {
+    requestId: String(input.requestId),
+    txHash: input.txHash,
+    vrfWord: settled.vrfWord,
+    clientSeed: input.clientSeed,
+    nonce: input.nonce,
     game: game as 0 | 1,
-    stake: weiToFp(p.stake),
-    params: { target: p.params.target, rows: p.params.rows, risk: p.params.risk },
+    stake: weiToFp(input.stake),
+    params: {
+      target: input.params.target,
+      rows: input.params.rows,
+      risk: input.params.risk,
+    },
     finalSeed: settled.finalSeed,
     outcomeX100: settled.outcome,
     win: settled.win,

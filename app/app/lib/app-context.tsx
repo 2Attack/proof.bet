@@ -17,6 +17,7 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
@@ -25,6 +26,7 @@ import type { Hex } from "viem";
 import {
   useAccount,
   useBalance,
+  usePublicClient,
   useReadContract,
   useWatchContractEvent,
 } from "wagmi";
@@ -37,7 +39,12 @@ import {
 import {
   getLiveRounds,
   subscribeLiveRounds,
+  setPendingLiveRound,
+  resolveRecoveredRound,
+  clearPendingLiveRound,
 } from "./rounds-store";
+import { recoverPendingRound } from "./recover-pending";
+import { resolveSettledRound } from "./live-bet";
 import { proofBetContract, proofsContract } from "./contracts";
 import { weiToFp } from "./units";
 import { config } from "./config";
@@ -59,6 +66,9 @@ export interface AppContextValue {
   // Verify
   verifyRound: MockRound | null;
   setVerifyRound: (r: MockRound | null) => void;
+  // true until hydration + wagmi's initial (re)connect settle — lets the header
+  // show a loader instead of flashing the Connect button (live mode only)
+  resolving: boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -136,6 +146,8 @@ function MockAppProvider({ children }: { children: ReactNode }) {
     maxBetPlinko,
     verifyRound,
     setVerifyRound,
+    // Mock mode resolves synchronously from the in-memory store.
+    resolving: false,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -146,14 +158,61 @@ function MockAppProvider({ children }: { children: ReactNode }) {
 // ---------------------------------------------------------------------------
 
 function LiveAppProvider({ children }: { children: ReactNode }) {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, status } = useAccount();
+  const publicClient = usePublicClient();
   const [verifyRound, setVerifyRound] = useState<MockRound | null>(null);
+
+  // Gate the header until hydration completes and wagmi finishes its initial
+  // reconnect (see ReconnectManager in providers.tsx). Until then we can't tell
+  // a connected wallet from a disconnected one, so the header shows a loader
+  // instead of flashing "Connect & play". `mounted` keeps SSR and the first
+  // client render in agreement.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const resolving =
+    !mounted || status === "connecting" || status === "reconnecting";
 
   // Session rounds (populated by the bet hooks).
   const [roundsSnap, setRoundsSnap] = useState(() => getLiveRounds());
   useEffect(() => {
     return subscribeLiveRounds(() => setRoundsSnap({ ...getLiveRounds() }));
   }, []);
+
+  // Recover an in-flight bet after a reload. The pending round lives only in
+  // memory, so a refresh during the VRF wait would otherwise drop it (and let
+  // the player bet again). We rebuild it from the chain, then re-attach the
+  // settlement watcher — `resolveSettledRound` reads the exact on-chain stake and
+  // waits for BetSettled, exactly as the live bet flow would have. Runs once per
+  // connected address; never clobbers a bet already started this session.
+  const recoveredFor = useRef<Hex | null>(null);
+  useEffect(() => {
+    if (!isConnected || !address || !publicClient) return;
+    if (recoveredFor.current === address) return;
+    recoveredFor.current = address;
+    if (getLiveRounds().pendingRound) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const recovered = await recoverPendingRound(publicClient, address);
+        if (cancelled || !recovered) return;
+        // A fresh bet may have started during the scan — don't overwrite it.
+        if (getLiveRounds().pendingRound) return;
+        setPendingLiveRound(recovered.round);
+
+        const settled = await resolveSettledRound(publicClient, recovered.resume);
+        if (cancelled) return;
+        resolveRecoveredRound(settled);
+      } catch (err) {
+        console.error("pending-bet recovery failed:", err);
+        if (!cancelled) clearPendingLiveRound();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isConnected, address, publicClient]);
 
   const enabled = isConnected && !!address;
   const queryOpts = { query: { enabled } } as const;
@@ -219,6 +278,7 @@ function LiveAppProvider({ children }: { children: ReactNode }) {
     maxBetPlinko,
     verifyRound,
     setVerifyRound,
+    resolving,
   };
 
   return (
@@ -243,6 +303,16 @@ function ChainEventRefresher({
 }) {
   const enabled = !!player;
   const filter = player ? { player } : undefined;
+  // PRF mints (faucet) and withdrawals land as ERC-20 Transfers to the player —
+  // ProofBet emits nothing for those, so without this watcher the wallet balance
+  // never refreshes after a faucet claim (the Claim button would stay un-minted).
+  useWatchContractEvent({
+    ...proofsContract,
+    eventName: "Transfer",
+    args: player ? { to: player } : undefined,
+    enabled,
+    onLogs: onChange,
+  });
   useWatchContractEvent({
     ...proofBetContract,
     eventName: "Deposit",
