@@ -26,9 +26,9 @@ import type { Hex } from "viem";
 import {
   useAccount,
   useBalance,
+  useBlockNumber,
   usePublicClient,
   useReadContract,
-  useWatchContractEvent,
 } from "wagmi";
 import {
   getState,
@@ -242,16 +242,41 @@ function LiveAppProvider({ children }: { children: ReactNode }) {
     ...queryOpts,
   });
 
-  // Refetch balances/nonce whenever the chain emits something about this player.
-  // Cheaper and more responsive than block-polling; the bet hook owns its own
-  // BetSettled watcher for settlement, this just keeps the header numbers fresh.
-  const refetchAll = useCallback(() => {
+  // Keep the latest refetch closure in a ref so the block-driven effect below
+  // depends only on the block number, never on the per-render query handles
+  // (which get fresh identities every render).
+  const refetchRef = useRef(() => {});
+  refetchRef.current = () => {
     void walletRead.refetch();
     void inPlayRead.refetch();
     void bankrollRead.refetch();
     void nonceRead.refetch();
     void ethBal.refetch();
-  }, [walletRead, inPlayRead, bankrollRead, nonceRead, ethBal]);
+  };
+
+  // Liveness: poll the block number — a single, stateless `eth_blockNumber` per
+  // interval — and refetch the header reads whenever the chain advances; the
+  // existing `batch: { multicall: true }` coalesces them into ~one eth_call.
+  //
+  // This REPLACES four per-event `useWatchContractEvent` filters
+  // (Transfer/Deposit/Withdraw/BetSettled). Those were the source of the
+  // /games rate-limit (HTTP 429): (a) all four polled on the same tick, firing a
+  // request burst every interval, and (b) event filters are stateful and
+  // node-specific — on our `fallback([infura, publicnode])` transport, when
+  // Infura 429s and the call fails over to publicnode the filter ID doesn't
+  // exist there → "filter not found" → viem recreates it, feeding the rate-limit
+  // loop. `eth_blockNumber` is stateless and works identically on any node, so it
+  // is fallback-safe. (Supersedes the earlier "events over block-polling" choice:
+  // the burst + filter churn, not block-polling, was the real cost. The active
+  // bet flow still owns its own BetSettled poll in live-bet.ts.)
+  const { data: blockNumber } = useBlockNumber({
+    watch: enabled,
+    query: { enabled },
+  });
+  useEffect(() => {
+    if (!enabled || blockNumber === undefined) return;
+    refetchRef.current();
+  }, [blockNumber, enabled]);
 
   const bankrollFp = bankrollRead.data ? weiToFp(bankrollRead.data) : 0n;
 
@@ -281,60 +306,7 @@ function LiveAppProvider({ children }: { children: ReactNode }) {
     resolving,
   };
 
-  return (
-    <AppContext.Provider value={value}>
-      <ChainEventRefresher player={address} onChange={refetchAll} />
-      {children}
-    </AppContext.Provider>
-  );
-}
-
-/**
- * Invalidates balance reads when this player's Deposit/Withdraw/BetSettled events
- * land. Kept as a child so its watchers don't gate the provider's own reads.
- * No-op when disconnected.
- */
-function ChainEventRefresher({
-  player,
-  onChange,
-}: {
-  player: Hex | undefined;
-  onChange: () => void;
-}) {
-  const enabled = !!player;
-  const filter = player ? { player } : undefined;
-  // PRF mints (faucet) and withdrawals land as ERC-20 Transfers to the player —
-  // ProofBet emits nothing for those, so without this watcher the wallet balance
-  // never refreshes after a faucet claim (the Claim button would stay un-minted).
-  useWatchContractEvent({
-    ...proofsContract,
-    eventName: "Transfer",
-    args: player ? { to: player } : undefined,
-    enabled,
-    onLogs: onChange,
-  });
-  useWatchContractEvent({
-    ...proofBetContract,
-    eventName: "Deposit",
-    args: filter,
-    enabled,
-    onLogs: onChange,
-  });
-  useWatchContractEvent({
-    ...proofBetContract,
-    eventName: "Withdraw",
-    args: filter,
-    enabled,
-    onLogs: onChange,
-  });
-  useWatchContractEvent({
-    ...proofBetContract,
-    eventName: "BetSettled",
-    args: filter,
-    enabled,
-    onLogs: onChange,
-  });
-  return null;
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export function useApp(): AppContextValue {
