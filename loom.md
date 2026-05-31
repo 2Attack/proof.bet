@@ -1,103 +1,107 @@
-# Loom-сценарий (5 минут) — proof.bet
+# Loom script (5 minutes) — proof.bet
 
-> Формат записи: показать flow продукта + рассказать про **одну вещь, которую я не знал раньше**,
-> и как я с ней разобрался. Язык: русский. Ниже — тайминг, что показывать на экране и что говорить.
+> Recording format: show the product flow + talk through **one thing I didn't know before**
+> and how I dealt with it. Below: timing, what to show on screen, and what to say.
 
-**proof.bet** — provably-fair крипто-казино на Ethereum Sepolia. Две игры (Limbo + Plinko) на одном
-движке честности. Главная фишка: дровер **«Verify this round»**, который пересчитывает результат
-раунда прямо в браузере игрока из он-чейн данных. Слоган: *«Every bet, with proof.»*
+**proof.bet** — a provably-fair crypto casino on Ethereum Sepolia. Two games (Limbo + Plinko)
+on one shared fairness engine. The hero feature: a **"Verify this round"** drawer that
+recomputes each round's result right in the player's browser from on-chain data.
+Tagline: *"Every bet, with proof."*
 
-Прод: https://proofbet.vercel.app
+Live: https://proofbet.vercel.app
 
 ---
 
-## 0:00–0:30 — Вступление (камера + экран)
+## 0:00–0:30 — Intro (camera + screen)
 
-- «Привет, это proof.bet — провабли-фейр казино на Sepolia. За 48 часов: два смарт-контракта,
-  Chainlink VRF для честной случайности и фронт на Next.js, задеплоенный на Vercel.»
-- «Сейчас покажу полный путь игрока, а потом разберу одну вещь, которую я не знал заранее и которая
-  меня прилично попила — как я её диагностировал и починил.»
-- На экране: открыта главная https://proofbet.vercel.app
+- "Hi, this is proof.bet — a provably-fair casino on Sepolia. Built in 48 hours: two smart
+  contracts, Chainlink VRF for fair randomness, and a Next.js frontend deployed on Vercel."
+- "I'll walk through the full player flow, then dig into one thing I didn't know going in that
+  gave me real trouble — how I diagnosed it and fixed it."
+- On screen: the homepage open at https://proofbet.vercel.app
 
-## 0:30–1:15 — Connect + две валюты
+## 0:30–1:15 — Connect + two currencies
 
-- Жму **Connect** → MetaMask (Sepolia).
-- Показываю в шапке два баланса: **Wallet (PRF)** и **In play**.
-- «Две валюты намеренно разделены: tETH — только на газ, ставить нельзя. **Proofs (PRF)** —
-  единственная ставочная валюта. Конвертации tETH→PRF нет.»
-- Жму **Faucet** → claim 1000 PRF. Показываю, как баланс Wallet обновился.
+- Click **Connect** → MetaMask (Sepolia).
+- Show the two balances in the header: **Wallet (PRF)** and **In play**.
+- "The two currencies are deliberately separated: tETH is gas only — you can't bet it.
+  **Proofs (PRF)** is the only betting currency. There's no tETH→PRF conversion."
+- Click **Faucet** → claim 1000 PRF. Show the Wallet balance update.
 
 ## 1:15–1:45 — Deposit (Wallet → In play)
 
-- Открываю дровер **Deposit**, перевожу часть PRF «в игру».
-- «Депозит — это approve + перевод в контракт. Баланс In play живёт уже внутри контракта.
-  Забрать обратно — только через withdraw (pull, не push).»
+- Open the **Deposit** drawer, move some PRF "into play."
+- "Deposit is approve + transfer into the contract. The In-play balance now lives inside the
+  contract. To get it back, you withdraw — pull, not push."
 
-## 1:45–2:45 — Играем: Limbo и Plinko
+## 1:45–2:45 — Playing: Limbo and Plinko
 
-- **Limbo**: ставлю, задаю target-множитель, жму Bet. Показываю pending-тост: signing →
-  confirming → **waiting for VRF** → settling. «Вот эта длинная пауза — это реальный асинхронный
-  колбэк Chainlink VRF, ~30 секунд. Мы его не фейкаем — тикающий счётчик показывает честное ожидание.»
-- **Plinko**: ставлю, шарик падает по сетке, попадает в bucket с множителем.
-- Подчёркиваю: **один контракт обслуживает обе игры** — `placeBet(gameType)`, а
-  `fulfillRandomWords` роутит в нужную формулу расчёта.
+- **Limbo**: place a bet, set the target multiplier, hit Bet. Show the pending toast: signing →
+  confirming → **waiting for VRF** → settling. "This long pause is the real, asynchronous
+  Chainlink VRF callback — about 30 seconds. We don't fake it — the ticking counter shows an
+  honest wait."
+- **Plinko**: place a bet, the ball drops through the grid and lands in a multiplier bucket.
+- Emphasize: **one contract serves both games** — `placeBet(gameType)`, and
+  `fulfillRandomWords` routes to the right settlement formula.
 
-## 2:45–3:15 — Главная фишка: Verify this round
+## 2:45–3:15 — The hero feature: Verify this round
 
-- Открываю дровер **Verify** на сыгранном раунде.
-- «Вот ядро продукта. Берём `vrfWord` из он-чейна, клиентский seed (его задаёт игрок) и nonce,
-  считаем `finalSeed = keccak256(vrfWord, clientSeed, nonce)` — **прямо в браузере** — и сверяем с
-  тем, что записал контракт. Видим “✓ matches”. Контракт верифицирован на Etherscan.»
-- «Девиз: *The house always wins. Now you can prove it.*»
+- Open the **Verify** drawer on a settled round.
+- "This is the core of the product. We take the `vrfWord` from on-chain, the client seed (the
+  player sets it), and the nonce, and compute `finalSeed = keccak256(vrfWord, clientSeed, nonce)`
+  — **right in the browser** — and compare it to what the contract recorded. We see '✓ matches.'
+  The contract is verified on Etherscan."
+- "The line: *The house always wins. Now you can prove it.*"
 
-## 3:15–5:00 — Одна вещь, которую я не знал: rate-limit на RPC и почему fallback не спасал
+## 3:15–5:00 — One thing I didn't know: an RPC rate-limit and why fallback didn't save me
 
-Это самая ценная часть — рассказываю как проблему, гипотезу и решение.
+This is the most valuable part — I tell it as problem → hypothesis → fix.
 
-**Симптом.** На странице `/games/plinko` в Network — лавина запросов к Infura и периодические
-**HTTP 429 «Too Many Requests»**. Балансы в шапке моргали/застывали.
+**Symptom.** On `/games/plinko`, the Network tab showed a flood of requests to Infura and
+periodic **HTTP 429 "Too Many Requests."** The header balances flickered / froze.
 
-**Чего я не знал (две неожиданности):**
+**What I didn't know (two surprises):**
 
-1. **Infura отвечает на rate-limited *батч* статусом HTTP 200 с битым телом.**
-   Когда несколько JSON-RPC вызовов коалесятся в один батч-запрос и упираются в лимит, Infura
-   возвращает не 429, а `200 OK` с массивом `[{"code":-32005,"message":"Too Many Requests"}]` —
-   без `result`. viem читает `result` как `undefined` и падает с «Cannot convert undefined to a
-   BigInt». А раз HTTP-статус 200 — `fallback`-транспорт **не переключается** на резервный узел.
-   → Поэтому транспортный `batch: true` пришлось выключить (оставил только `batch:{multicall:true}`
-   на уровне приложения). При выключенном батче тот же лимит приходит честным 429, и fallback
-   корректно уходит на publicnode.
+1. **Infura answers a rate-limited *batch* with HTTP 200 and a malformed body.**
+   When several JSON-RPC calls are coalesced into one batch request and hit the limit, Infura
+   returns not a 429 but `200 OK` with an array `[{"code":-32005,"message":"Too Many Requests"}]`
+   — no `result`. viem reads `result` as `undefined` and throws "Cannot convert undefined to a
+   BigInt." And because the HTTP status is 200, the `fallback` transport **doesn't fail over** to
+   the backup node. → So I had to turn off transport-level `batch: true` (keeping only
+   `batch:{multicall:true}` at the app level). With batching off, the same limit comes back as an
+   honest 429, and fallback correctly switches to publicnode.
 
-2. **Event-фильтры viem несовместимы с `fallback()`-транспортом.** Это и был главный источник 429
-   на игровых страницах. У меня в `AppContext` висели **четыре** `useWatchContractEvent`
-   (Transfer / Deposit / Withdraw / BetSettled). На HTTP-транспорте каждый из них поллит, и:
-   - все четыре стреляли **на одном тике** → burst из ~5 запросов каждые 5 секунд;
-   - `eth_newFilter` создаёт **stateful-фильтр, привязанный к конкретной ноде**. Когда Infura
-     отдаёт 429 и `fallback` уходит на publicnode — там этого фильтра нет → «filter not found» →
-     viem пересоздаёт фильтр → новый запрос → подкармливает ту же петлю rate-limit'а.
+2. **viem event filters are incompatible with a `fallback()` transport.** This was the main
+   source of the 429 on the game pages. My `AppContext` had **four** `useWatchContractEvent`
+   hooks (Transfer / Deposit / Withdraw / BetSettled). On an HTTP transport each one polls, and:
+   - all four fired **on the same tick** → a burst of ~5 requests every 5 seconds;
+   - `eth_newFilter` creates a **stateful filter bound to a specific node**. When Infura returns
+     429 and `fallback` switches to publicnode, that filter doesn't exist there → "filter not
+     found" → viem recreates the filter → another request → feeding the same rate-limit loop.
 
-**Как разобрался.**
-- Сначала исключил очевидное: проверил, что React Query уже затюнен (`staleTime`, без
-  refetch-on-focus) и что на самой странице Plinko нет лишних чтений (`maxBet` — чистая функция).
-- Проверил в `node_modules`, переподписывается ли `useWatchContractEvent` при смене `onLogs` —
-  оказалось **нет**, он ref-стабилизирует колбэк. Значит шторма переподписок нет, проблема —
-  именно в стоячем поллинге фильтров + их несовместимости с fallback.
+**How I worked it out.**
+- First I ruled out the obvious: confirmed React Query was already tuned (`staleTime`, no
+  refetch-on-focus) and that the Plinko page itself has no extra reads (`maxBet` is a pure
+  function).
+- I checked in `node_modules` whether `useWatchContractEvent` re-subscribes when `onLogs`
+  changes — it **doesn't**; it ref-stabilizes the callback. So there's no re-subscribe storm; the
+  problem is the steady filter polling plus its incompatibility with fallback.
 
-**Решение.** Заменил 4 event-watcher'а на **один stateless `eth_blockNumber`-watch**
-(`useBlockNumber({ watch: true })`) и рефетч балансов при появлении нового блока. Почему это
-правильно:
-- `eth_blockNumber` не имеет состояния и работает одинаково на любой ноде → **fallback-safe**
-  (нет «filter not found»);
-- один запрос на тик вместо burst'а из пяти;
-- рефетч коалесится в **один `eth_call`** через multicall3.
+**The fix.** I replaced the 4 event watchers with **one stateless `eth_blockNumber` watch**
+(`useBlockNumber({ watch: true })`) and refetch balances when a new block appears. Why this is
+right:
+- `eth_blockNumber` is stateless and works identically on any node → **fallback-safe** (no
+  "filter not found");
+- one request per tick instead of a burst of five;
+- the refetch coalesces into **a single `eth_call`** via multicall3.
 
-**Вывод одной фразой для Loom:** «Я думал, проблема в частоте поллинга, а оказалось — в том, что
-stateful event-фильтры в принципе несовместимы с fallback-транспортом, а Infura ещё и маскирует
-rate-limit под 200 OK. Лечится переходом на stateless block-number polling.»
+**One-line takeaway for the Loom:** "I assumed it was about polling frequency, but it turned out
+stateful event filters are fundamentally incompatible with a fallback transport — and Infura even
+masks the rate limit as a 200 OK. The cure is switching to stateless block-number polling."
 
 ---
 
-### Подсказки для записи
-- Держать открытыми две вкладки: прод-сайт и DevTools → Network (показать «было/стало» по числу запросов).
-- Уложиться: flow ~3 минуты, технический разбор ~2 минуты.
-- Не углубляться в Solidity — фокус на UX-флоу + один технический инсайт.
+### Recording tips
+- Keep two tabs open: the live site and DevTools → Network (show "before/after" by request count).
+- Pacing: flow ~3 minutes, technical deep-dive ~2 minutes.
+- Don't dive into Solidity — focus on the UX flow + one technical insight.
