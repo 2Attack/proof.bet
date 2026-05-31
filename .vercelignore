@@ -1,0 +1,24 @@
+# Only the Next.js app (app/) and its workspace dep (packages/) are needed for the Vercel build.
+# Everything below is excluded to keep uploads lean and the build sandbox clean.
+
+node_modules
+**/node_modules
+
+# Build artifacts
+app/.next
+app/out
+dist
+
+# Not part of the frontend build
+contracts
+design
+docs
+
+# Local env files (env vars are configured on Vercel)
+.env
+.env.*
+
+# Misc
+.idea
+.DS_Store
+*.log
