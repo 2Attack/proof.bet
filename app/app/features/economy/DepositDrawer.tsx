@@ -182,7 +182,7 @@ export function DepositDrawer({ onClose }: DepositDrawerProps) {
           <>
             <TxStateDisplay tx={tx} doneLabel="Proofs moved into play" />
             <div className="eco-actions">
-              <Btn kind="accent" full onClick={() => router.push("/games")}>
+              <Btn kind="accent" full onClick={() => { onClose(); router.push("/games"); }}>
                 Choose a game →
               </Btn>
             </div>
