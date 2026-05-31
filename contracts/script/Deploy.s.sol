@@ -35,6 +35,27 @@ import { ProofBet } from "../src/ProofBet.sol";
 ///     --chain sepolia --etherscan-api-key $ETHERSCAN_API_KEY \
 ///     --constructor-args $(cast abi-encode "constructor(address,uint256,address)" \
 ///       $PROOFS_ADDRESS $VRF_SUBSCRIPTION_ID $VRF_COORDINATOR)
+///
+///   # Verify on Sourcify (REQUIRED for wallets to decode method names).
+///   # MetaMask reads Sourcify, NOT Etherscan: without this, custom calls like
+///   # placeBet show as "Contract Interaction" (faucet/deposit/withdraw still
+///   # resolve via the public 4byte registry). Standard ERC20s are unaffected.
+///   #
+///   # Gotcha: forge forces the Etherscan verifier whenever ETHERSCAN_API_KEY
+///   # resolves (incl. via the [etherscan] table in foundry.toml + .env), which
+///   # makes --verifier sourcify a no-op. Temporarily strip the [rpc_endpoints]/
+///   # [etherscan] tail from foundry.toml and hide .env (the [profile.default]
+///   # build settings must stay intact so the bytecode matches), then restore:
+///   #   cp foundry.toml foundry.toml.bak
+///   #   awk '/^\[rpc_endpoints\]/{exit} {print}' foundry.toml.bak > foundry.toml
+///   #   mv .env .env.tmp; unset ETHERSCAN_API_KEY
+///   #   forge verify-contract <PROOFBET_ADDRESS> src/ProofBet.sol:ProofBet \
+///   #     --chain sepolia --verifier sourcify \
+///   #     --constructor-args $(cast abi-encode "constructor(address,uint256,address)" \
+///   #       $PROOFS_ADDRESS $VRF_SUBSCRIPTION_ID $VRF_COORDINATOR)
+///   #   mv foundry.toml.bak foundry.toml; mv .env.tmp .env   # always restore
+///   # Check status: curl https://sourcify.dev/server/v2/verify/<JOB_ID>
+///   # (ProofBet 0xD07b…9992 verified on Sourcify — exact_match.)
 contract DeployScript is Script {
     /// @dev Amount of PRF to seed the bankroll: 1,000,000 PRF.
     uint256 private constant BANKROLL_SEED = 1_000_000e18;

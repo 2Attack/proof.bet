@@ -26,7 +26,23 @@ function ReconnectManager() {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            // Serve cached reads for 8s instead of refiring on every render,
+            // and don't refetch the whole balance set on tab focus — both were
+            // major sources of RPC churn that tripped Infura's 429 limit.
+            staleTime: 8_000,
+            refetchOnWindowFocus: false,
+            // Back off on failures (incl. 429) instead of retrying immediately.
+            retry: 2,
+            retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 8_000),
+          },
+        },
+      }),
+  );
   return (
     <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
       <QueryClientProvider client={queryClient}>
