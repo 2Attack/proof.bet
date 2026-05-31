@@ -21,7 +21,7 @@ import {
   resolveLiveRound,
   clearPendingLiveRound,
 } from "../../lib/rounds-store";
-import { placeBetLive } from "../../lib/live-bet";
+import { placeBetLive, type BetStage } from "../../lib/live-bet";
 import { fpToWei, weiToFp } from "../../lib/units";
 import { randHex, fakeVRFLatency } from "../../lib/mock-utils";
 import { config } from "../../lib/config";
@@ -39,6 +39,7 @@ export interface PlinkoRound extends MockRound {
 
 export function usePlinkoBet() {
   const [phase, setPhase] = useState<PlinkoBetPhase>("idle");
+  const [stage, setStage] = useState<BetStage>("signing");
   const [round, setRound] = useState<PlinkoRound | null>(null);
   const inFlightRef = useRef(false);
   const publicClient = usePublicClient();
@@ -54,6 +55,10 @@ export function usePlinkoBet() {
     ) => {
       if (inFlightRef.current) return;
       inFlightRef.current = true;
+      // Reset stage every bet so round 2's toast never opens on round 1's
+      // leftover stage. Live confirms "signing" immediately; mock jumps to
+      // "vrf" (no wallet prompt, single real wait).
+      setStage("signing");
       setPhase("pending");
       setRound(null);
 
@@ -79,8 +84,12 @@ export function usePlinkoBet() {
             payout: 0n,
           });
 
+          // Mock has a single real await (the fake latency) → map it to the
+          // VRF wait, the only stage that genuinely takes time here.
+          setStage("vrf");
           // Fake VRF latency
           const vrfWord = await fakeVRFLatency();
+          setStage("settling");
 
           const settlement = settleRound(
             GameType.Plinko,
@@ -142,6 +151,7 @@ export function usePlinkoBet() {
             stakeWei: fpToWei(stake),
             clientSeed,
             params,
+            onProgress: setStage,
           });
 
           // Recompute path/slot via the shared engine for the ball-drop animation
@@ -203,5 +213,5 @@ export function usePlinkoBet() {
     setRound(null);
   }, []);
 
-  return { phase, round, placeBet, startDrop, settle, reset };
+  return { phase, stage, round, placeBet, startDrop, settle, reset };
 }

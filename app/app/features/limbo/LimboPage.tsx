@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { TopNav } from "../../components/TopNav";
 import { Btn } from "../../components/Btn";
 import { ClimbChart } from "../../components/ClimbChart";
+import { PendingToast } from "../../components/PendingToast";
 import { useApp } from "../../lib/app-context";
 import { usePlaceBet } from "./hooks";
 import { useClimb } from "../../lib/spring";
@@ -131,73 +132,6 @@ function BankrollMeter({
   );
 }
 
-function PendingToast({
-  onDone,
-  block,
-}: {
-  onDone: () => void;
-  block: number;
-}) {
-  const [step, setStep] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
-  const [show, setShow] = useState(false);
-  void block;
-
-  useEffect(() => {
-    const reduced = window.matchMedia?.(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-    const durs = reduced ? [150, 150, 150] : [1500, 1700, 1100];
-    const total = durs.reduce((a, b) => a + b, 0);
-
-    requestAnimationFrame(() => setShow(true));
-    let acc = 0;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    durs.forEach((d, i) => {
-      acc += d;
-      timers.push(setTimeout(() => setStep(i + 1), acc));
-    });
-    timers.push(setTimeout(() => setShow(false), total + 200));
-    timers.push(setTimeout(onDone, total + 450));
-    const t0 = performance.now();
-    const iv = setInterval(
-      () => setElapsed((performance.now() - t0) / 1000),
-      100
-    );
-    return () => {
-      timers.forEach((t) => clearTimeout(t));
-      clearInterval(iv);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const steps = ["Requesting entropy", "Oracle responded", "Settling on-chain"];
-  const cur = steps[Math.min(step, steps.length - 1)];
-  const pct = Math.min(100, (step / steps.length) * 100 + 6);
-
-  return (
-    <div
-      className={`glass pending-toast${show ? " show" : ""}`}
-      role="status"
-      aria-live="polite"
-    >
-      <div className="pt-spinner" />
-      <div className="pt-body">
-        <div className="pt-head">
-          <span className="pt-title">Resolving on-chain</span>
-          <span className="pt-elapsed mono">{elapsed.toFixed(1)}s</span>
-        </div>
-        <div className="pt-step mono">
-          <span className="pulse-dot" />
-          {step >= steps.length ? "finalizing…" : cur}
-        </div>
-        <div className="pt-bar">
-          <i style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ---------- the result stage (money-shot) ----------
 function ResultStage({
@@ -407,11 +341,10 @@ function TargetSlider({
 export function LimboPage() {
   const router = useRouter();
   const { inPlay, bankroll, nonce, setVerifyRound, maxBetLimbo } = useApp();
-  const { phase, round, placeBet, settle, reset } = usePlaceBet();
+  const { phase, stage, round, placeBet, settle, reset } = usePlaceBet();
   const [target, setTarget] = useState(2.0);
   const [stake, setStake] = useState(25);
   const [clientSeed] = useState<Hex>(() => randHex(32) as Hex);
-  const [block] = useState(6294117);
   const [recent, setRecent] = useState<
     Array<{ crashX100: bigint; win: boolean }>
   >([]);
@@ -605,7 +538,7 @@ export function LimboPage() {
         </div>
       </div>
 
-      {phase === "pending" && <PendingToast onDone={() => {}} block={block} />}
+      {phase === "pending" && <PendingToast stage={stage} />}
     </div>
   );
 }

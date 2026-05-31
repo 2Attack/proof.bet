@@ -21,7 +21,7 @@ import {
   resolveLiveRound,
   clearPendingLiveRound,
 } from "../../lib/rounds-store";
-import { placeBetLive } from "../../lib/live-bet";
+import { placeBetLive, type BetStage } from "../../lib/live-bet";
 import { fpToWei, weiToFp } from "../../lib/units";
 import { randHex, fakeVRFLatency } from "../../lib/mock-utils";
 import { config } from "../../lib/config";
@@ -38,6 +38,7 @@ export interface LimboRound extends MockRound {
 
 export function usePlaceBet() {
   const [phase, setPhase] = useState<BetPhase>("idle");
+  const [stage, setStage] = useState<BetStage>("signing");
   const [round, setRound] = useState<LimboRound | null>(null);
   const inFlightRef = useRef(false);
   const publicClient = usePublicClient();
@@ -52,6 +53,10 @@ export function usePlaceBet() {
     ) => {
       if (inFlightRef.current) return;
       inFlightRef.current = true;
+      // Reset stage every bet so round 2's toast never opens on round 1's
+      // leftover stage. Live confirms "signing" immediately; mock jumps to
+      // "confirming" (no wallet prompt).
+      setStage("signing");
       setPhase("pending");
       setRound(null);
 
@@ -81,8 +86,12 @@ export function usePlaceBet() {
             payout: 0n,
           });
 
+          // Mock has a single real await (the fake latency) → map it to the
+          // VRF wait, the only stage that genuinely takes time here.
+          setStage("vrf");
           // Fake VRF latency (3–8s)
           const vrfWord = await fakeVRFLatency();
+          setStage("settling");
 
           // Settle using the SHARED fairness engine — SAME logic as the contract
           const settlement = settleRound(
@@ -144,6 +153,7 @@ export function usePlaceBet() {
             stakeWei: fpToWei(stake),
             clientSeed,
             params,
+            onProgress: setStage,
           });
 
           // Recompute via the shared engine (same logic the contract ran) — this
@@ -198,5 +208,5 @@ export function usePlaceBet() {
     setRound(null);
   }, []);
 
-  return { phase, round, placeBet, settle, reset };
+  return { phase, stage, round, placeBet, settle, reset };
 }

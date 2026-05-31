@@ -31,6 +31,44 @@ export interface LiveBetResult {
   win: boolean;
 }
 
+/**
+ * The real, observable steps of a bet — fired as `placeBetLive` crosses each
+ * await boundary so the pending toast reflects what is actually happening, not
+ * a fixed animation. Mock mode reuses the same stages minus `signing` (there is
+ * no wallet prompt). `done` is a terminal marker; the toast unmounts before it.
+ */
+export type BetStage = "signing" | "confirming" | "vrf" | "settling" | "done";
+
+/** Ordered live stages (mock starts at index 1 — no `signing`). */
+export const BET_STAGES: readonly BetStage[] = [
+  "signing",
+  "confirming",
+  "vrf",
+  "settling",
+] as const;
+
+export const BET_STAGE_LABEL: Record<BetStage, string> = {
+  signing: "Awaiting wallet signature",
+  confirming: "Confirming bet on-chain",
+  vrf: "Waiting for VRF randomness",
+  settling: "Settling round on-chain",
+  done: "Done",
+};
+
+/**
+ * Target progress-bar fill per stage. The bar deliberately parks at the `vrf`
+ * value during the long (~30s–2min) oracle wait rather than faking movement —
+ * the ticking elapsed counter and the pulsing step dot are the honest liveness
+ * signals. "Nothing hidden" is the product's whole pitch.
+ */
+export const BET_STAGE_PCT: Record<BetStage, number> = {
+  signing: 12,
+  confirming: 38,
+  vrf: 68,
+  settling: 92,
+  done: 100,
+};
+
 const SETTLE_POLL_MS = 4_000;
 const SETTLE_TIMEOUT_MS = 180_000;
 
@@ -94,13 +132,24 @@ export async function placeBetLive(opts: {
   stakeWei: bigint;
   clientSeed: Hex;
   params: BetParams;
+  /** Fired as each real await boundary is crossed (drives the pending toast). */
+  onProgress?: (stage: BetStage) => void;
 }): Promise<LiveBetResult> {
-  const { publicClient, writeContractAsync, game, stakeWei, clientSeed, params } =
-    opts;
+  const {
+    publicClient,
+    writeContractAsync,
+    game,
+    stakeWei,
+    clientSeed,
+    params,
+    onProgress,
+  } = opts;
 
+  // "signing" covers the brief maxBet read (~300ms) plus the wallet prompt.
   // The UI cap is derived from a fp-truncated bankroll, so a stake at the
   // displayed max can land a hair above the contract's wei cap → BetTooLarge.
   // Clamp to the on-chain maxBet (the source of truth) to never revert at max.
+  onProgress?.("signing");
   const contractMax = (await publicClient.readContract({
     address: proofBetContract.address,
     abi: iProofBetAbi,
@@ -109,6 +158,8 @@ export async function placeBetLive(opts: {
   })) as bigint;
   const finalStakeWei = stakeWei > contractMax ? contractMax : stakeWei;
 
+  // wagmi's writeContractAsync resolves when the user confirms and the tx is
+  // BROADCAST (not when mined) — so this await is the signing→confirming boundary.
   const txHash = await writeContractAsync({
     address: proofBetContract.address,
     abi: iProofBetAbi,
@@ -121,10 +172,17 @@ export async function placeBetLive(opts: {
     ],
   });
 
+  // Tx is broadcast; now wait for it to be mined (~12–24s, 1–2 Sepolia blocks).
+  onProgress?.("confirming");
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
   const requestId = requestIdFromReceipt(receipt);
 
+  // requestId known → the async VRF callback is the long wait (~30s–2min).
+  onProgress?.("vrf");
   const settled = await waitForSettled(publicClient, requestId, receipt.blockNumber);
+
+  // BetSettled observed — balances are written, round is final.
+  onProgress?.("settling");
 
   return {
     requestId,

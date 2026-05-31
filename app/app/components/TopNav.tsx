@@ -1,11 +1,14 @@
 "use client";
 
 import { useRef, useState, useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./Logo";
+import { useAccount, useDisconnect } from "wagmi";
 import { useApp } from "../lib/app-context";
 import { reset as resetStore } from "../lib/mock-store";
+import { markManuallyDisconnected } from "../lib/wallet-session";
 import { fmtChipsFp, fmtGas } from "../features/economy/hooks";
 
 const LANGS = [
@@ -111,7 +114,7 @@ export function LangMenu() {
           />
         </svg>
       </button>
-      {open && (
+      {open && createPortal(
         <div
           className="acct-dropdown lang-dropdown"
           role="menu"
@@ -135,15 +138,21 @@ export function LangMenu() {
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 }
 
 function WalletMenu() {
-  const { walletPRF, inPlay, tEth, address } = useApp();
+  const { walletPRF, inPlay, tEth, address, isMock } = useApp();
+  const { connector } = useAccount();
+  const { disconnectAsync } = useDisconnect();
   const router = useRouter();
+  // Live: the active connector's display name ("MetaMask"). Mock has no wagmi
+  // connector — the design only offers MetaMask, so mirror that label.
+  const walletName = connector?.name ?? (isMock ? "MetaMask" : "Wallet");
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pos, setPos] = useState({ top: 0, right: 0 });
@@ -189,6 +198,13 @@ function WalletMenu() {
   const act = (fn: () => void) => { setOpen(false); fn(); };
 
   const disconnect = () => {
+    // Mark the session as explicitly disconnected so ReconnectManager won't
+    // silently reconnect on the next page load (that auto-reconnect is what
+    // made disconnect look broken). The flag is cleared again when the player
+    // reconnects from the Connect screen. Mock: no wagmi connection, so the
+    // disconnect call is a no-op and resetStore clears the in-memory wallet.
+    markManuallyDisconnected();
+    void disconnectAsync().catch(() => {});
     resetStore();
     setOpen(false);
     router.push("/");
@@ -211,7 +227,7 @@ function WalletMenu() {
           <path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-      {open && (
+      {open && createPortal(
         <div
           className="acct-dropdown wallet-dropdown"
           role="menu"
@@ -220,7 +236,7 @@ function WalletMenu() {
           <div className="ad-head">
             <span className="acct-ava ad-ava-lg" style={{ background: ava }} />
             <div className="ad-id">
-              <div className="ad-wallet">Wallet</div>
+              <div className="ad-wallet">{walletName}</div>
               <button
                 className="ad-addr mono"
                 onClick={() => {
@@ -273,7 +289,8 @@ function WalletMenu() {
           <button className="ad-disconnect" onClick={disconnect} role="menuitem">
             Disconnect
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TopNav } from "../../components/TopNav";
 import { Btn } from "../../components/Btn";
+import { PendingToast } from "../../components/PendingToast";
 import { useApp } from "../../lib/app-context";
 import { usePlinkoBet } from "./hooks";
 import { randHex } from "../../lib/mock-utils";
@@ -142,57 +143,6 @@ function usePlinkoDrop(
   return ball;
 }
 
-function PendingToast({ onDone }: { onDone: () => void }) {
-  const [show, setShow] = useState(false);
-  const [step, setStep] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
-  const steps = ["Requesting entropy", "Oracle responded", "Settling on-chain"];
-
-  useEffect(() => {
-    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const durs = reduced ? [150, 150, 150] : [1500, 1700, 1100];
-    const total = durs.reduce((a, b) => a + b, 0);
-    requestAnimationFrame(() => setShow(true));
-    let acc = 0;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    durs.forEach((d, i) => {
-      acc += d;
-      timers.push(setTimeout(() => setStep(i + 1), acc));
-    });
-    timers.push(setTimeout(() => setShow(false), total + 200));
-    timers.push(setTimeout(onDone, total + 450));
-    const t0 = performance.now();
-    const iv = setInterval(() => setElapsed((performance.now() - t0) / 1000), 100);
-    return () => {
-      timers.forEach(clearTimeout);
-      clearInterval(iv);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const pct = Math.min(100, (step / steps.length) * 100 + 6);
-  const cur = steps[Math.min(step, steps.length - 1)];
-
-  return (
-    <div className={`glass pending-toast${show ? " show" : ""}`} role="status" aria-live="polite">
-      <div className="pt-spinner" />
-      <div className="pt-body">
-        <div className="pt-head">
-          <span className="pt-title">Resolving on-chain</span>
-          <span className="pt-elapsed mono">{elapsed.toFixed(1)}s</span>
-        </div>
-        <div className="pt-step mono">
-          <span className="pulse-dot" />
-          {step >= steps.length ? "finalizing…" : cur}
-        </div>
-        <div className="pt-bar">
-          <i style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function SoundToggle() {
   // Deterministic on server + first client render to avoid a hydration mismatch
   // (the SSR sound singleton is a muted no-op); sync to the real engine after mount.
@@ -283,7 +233,7 @@ function PlinkoBoard({ rows, ball }: { rows: number; ball: BallState | null }) {
 export function PlinkoPage() {
   const router = useRouter();
   const { inPlay, nonce, setVerifyRound } = useApp();
-  const { phase, round, placeBet, settle, reset } = usePlinkoBet();
+  const { phase, stage, round, placeBet, settle, reset } = usePlinkoBet();
   const [risk, setRisk] = useState<Risk>(Risk.Medium);
   const [rows, setRows] = useState(12);
   const [stake, setStake] = useState(25);
@@ -569,8 +519,8 @@ export function PlinkoPage() {
         </div>
       </div>
 
-      {/* PendingToast is cosmetic; the hook drives pending→dropping itself. */}
-      {phase === "pending" && <PendingToast onDone={() => {}} />}
+      {/* Toast mirrors the real bet stage; the hook drives pending→dropping. */}
+      {phase === "pending" && <PendingToast stage={stage} />}
     </div>
   );
 }

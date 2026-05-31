@@ -8,6 +8,7 @@ import { TopNav } from "../../components/TopNav";
 import { getSound } from "../../lib/sound";
 import { randHex } from "../../lib/mock-utils";
 import { setAddress } from "../../lib/mock-store";
+import { clearManuallyDisconnected } from "../../lib/wallet-session";
 import { config } from "../../lib/config";
 import type { Hex } from "viem";
 
@@ -103,6 +104,9 @@ export function ConnectPage() {
     getSound().unlock();
     getSound().ui();
     setConnecting(true);
+    // Player is explicitly (re)connecting — let ReconnectManager auto-restore
+    // the session on future loads again.
+    clearManuallyDisconnected();
     if (config.isMock) {
       setTimeout(() => {
         // Generate a mock wallet address
