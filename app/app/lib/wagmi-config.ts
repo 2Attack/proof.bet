@@ -19,16 +19,23 @@ import { config as appConfig } from "./config";
 // provider instead of surfacing the error as a failed read.
 const SEPOLIA_FALLBACK_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
 
-// `batch: true` coalesces JSON-RPC requests fired in the same tick into a single
-// HTTP request — fewer round-trips, fewer rate-limit hits.
-const HTTP_OPTS = { batch: true } as const;
+// NOTE: transport-level `batch: true` is intentionally OFF. It coalesces distinct
+// JSON-RPC methods fired in the same tick into one HTTP array request — but Infura
+// answers a rate-limited *batch* with HTTP 200 and a malformed error body
+// (`[{"code":-32005,"message":"Too Many Requests"}]` — no `result`, no JSON-RPC
+// `error` envelope). viem reads `result` as undefined and throws "Cannot convert
+// undefined to a BigInt", and because the HTTP status was 200 the `fallback`
+// transport never fails over to publicnode. Unbatched, the same rate-limit returns
+// HTTP 429, which viem throws on and `fallback` correctly retries. Application-level
+// read coalescing still happens via `batch: { multicall: true }` below, so the
+// heavy balance/bankroll reads remain a single eth_call.
 
 export const wagmiConfig = createConfig({
   chains: [sepolia],
   transports: {
     [sepolia.id]: fallback([
-      http(appConfig.rpcUrl || undefined, HTTP_OPTS),
-      http(SEPOLIA_FALLBACK_RPC, HTTP_OPTS),
+      http(appConfig.rpcUrl || undefined),
+      http(SEPOLIA_FALLBACK_RPC),
     ]),
   },
   connectors: [injected({ target: "metaMask" })],
